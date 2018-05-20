@@ -39,6 +39,7 @@ class Auth(Resource):
 			db.registerUser(username, password, term, year, team)
 		except UsernameException:
 			return "Username exists", 403
+		return "Success", 200
 
 	def delete(self):
 		request.get_data()
