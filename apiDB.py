@@ -48,7 +48,8 @@ class APIDatabase:
 		return checkpw(password, res[0])
 
 	def createAPI(self, username, name, contact, description):
-		"""Create an API entry. Returns the API's ID"""
+		"""Create an API entry. Returns the API's ID. Not allowed to provide a version string because it's automatically
+		set to '1.0.0 Initial release'"""
 
 		# Create base entry in master API table
 		sql = "INSERT INTO api (id, name, version, contact, description, creator) VALUES(%s, %s, '1.0.0', %s, %s, %s)"
@@ -63,5 +64,30 @@ class APIDatabase:
 
 		return id
 
-	def updateAPI(self, id, **kwargs):
-		"""Update an API entry... anything about it"""
+	def updateAPI(self, apiID, **kwargs):
+		"""Update an API entry... anything about it. Returns whether operation succeeded"""
+		# Verify the API actually exists
+		self.cursor.execute("SELECT id FROM api WHERE id=%s", apiID)
+		if len(self.cursor.fetchall()) == 0:
+			return False
+
+		# I know, I know, I checked this over in app.py... this check ensures function can be used elsewhere, though
+		allowed = ("name", "version", "size", "contact", "description")
+		if not all(arg in allowed for arg in kwargs.keys()):
+			return False
+
+		# Slightly hacky: The arguments in the args dict are the same as the column names in the database API table...
+		# OH YEAH! Just iterate over every key, substituting in its name for the update, and the corresponding data
+		for key in kwargs.keys():
+			if key == "version":
+				continue
+			sql = "UPDATE api SET {}=%s WHERE id=%s".format(key)
+			self.cursor.execute(sql, (kwargs[key], apiID))
+
+		# Add new version to the list
+		if "version" in kwargs.keys():
+			sql = "INSERT INTO version(apiId, info) VALUES (%s, %s)"
+			self.cursor.execute(sql, (apiID, kwargs["version"]))
+
+		self.connection.commit()
+		return True
