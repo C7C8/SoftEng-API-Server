@@ -1,5 +1,5 @@
-from flask import Flask, request, jsonify
-from flask_restful import Resource, Api
+from flask import Flask
+from flask_restful import Resource, Api, reqparse
 from database import APIDatabase, UsernameException
 
 app = Flask(__name__)
@@ -9,15 +9,13 @@ db = APIDatabase()
 
 class Auth(Resource):
 	def get(self):
-		"""Get a token"""
-		request.get_data()
-		if len(request.args) == 0:
-			return None, 400
-
-		username = request.args["username"]
-		password = request.args["password"]
+		"""Login, return a token"""
+		parser = reqparse.RequestParser()
+		parser.add_argument("username", help="Must provide username to log in with", required=True)
+		parser.add_argument("password", help="Must provide password to log in with", required=True)
+		args = parser.parse_args()
 		try:
-			if db.authenticate(username, password):
+			if db.authenticate(args["username"], args["password"]):
 				return "Success", 200
 			else:
 				return "Bad login", 401
@@ -26,15 +24,19 @@ class Auth(Resource):
 
 	def post(self):
 		"""Register new user"""
-		request.get_data()
-		if len(request.json) == 0:
-			return None, 400
+		parser = reqparse.RequestParser()
+		parser.add_argument("username", help="Must provide username to register", required=True)
+		parser.add_argument("password", help="Must provide password to set for new user", required=True)
+		parser.add_argument("term", help="Provide term (A,B,C,D) that user is registering from", required=True)
+		parser.add_argument("year", help="Provide year that user is registering from", required=True)
+		parser.add_argument("team", help="Provide letter of team that user is registering from", required=True)
 
-		username = request.json["username"]
-		password = request.json["password"]
-		term = request.json["term"]
-		year = request.json["year"]
-		team = request.json["team"]
+		args = parser.parse_args()
+		username = args["username"]
+		password = args["password"]
+		term = args["term"]
+		year = args["year"]
+		team = args["team"]
 		try:
 			db.registerUser(username, password, term, year, team)
 		except UsernameException:
@@ -42,15 +44,14 @@ class Auth(Resource):
 		return "Success", 200
 
 	def delete(self):
-		request.get_data()
-		if len(request.args) == 0:
-			return None, 400
-
-		username = request.args["username"]
-		password = request.args["password"]
+		"""Delete user, requires password as confirmation"""
+		parser = reqparse.RequestParser()
+		parser.add_argument("username", help="Must provide username to log in with", required=True)
+		parser.add_argument("password", help="Must provide password to log in with", required=True)
+		args = parser.parse_args()
 		try:
-			if db.authenticate(username, password):
-				db.deleteUser(username)
+			if db.authenticate(args["username"], args["password"]):
+				db.deleteUser(args["username"])
 				return "Success", 200
 			else:
 				return "Bad login", 401
