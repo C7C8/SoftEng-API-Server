@@ -64,11 +64,12 @@ class APIDatabase:
 
 		return id
 
-	def updateAPI(self, apiID, **kwargs):
+	def updateAPI(self, username, apiID, **kwargs):
 		"""Update an API entry... anything about it. Returns whether operation succeeded"""
-		# Verify the API actually exists
-		self.cursor.execute("SELECT id FROM api WHERE id=%s", apiID)
-		if len(self.cursor.fetchall()) == 0:
+		# Verify the API actually exists and that this user owns it
+		self.cursor.execute("SELECT creator FROM api WHERE id=%s", apiID)
+		res = self.cursor.fetchone()
+		if len(res) == 0 or res[0] != username:
 			return False
 
 		# I know, I know, I checked this over in app.py... this check ensures function can be used elsewhere, though
@@ -92,10 +93,11 @@ class APIDatabase:
 		self.connection.commit()
 		return True
 
-	def deleteAPI(self, apiID):
-		# Verify the API actually exists
-		self.cursor.execute("SELECT id FROM api WHERE id=%s", apiID)
-		if len(self.cursor.fetchall()) == 0:
+	def deleteAPI(self, username, apiID):
+		# Verify the API actually exists and that this user owns it
+		self.cursor.execute("SELECT creator FROM api WHERE id=%s", apiID)
+		res = self.cursor.fetchone()
+		if len(res) == 0 or res[0] != username:
 			return False
 
 		self.cursor.execute("DELETE FROM api WHERE id=%s", apiID)

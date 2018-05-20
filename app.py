@@ -51,7 +51,7 @@ class Auth(Resource):
 		team = args["team"]
 		if not db.registerUser(username, password, term, year, team):
 			return {"message": "Registration failed"}, 403
-		return {"message": "Successfully registered as user {}".format(username)}, 200
+		return {"message": "Successfully registered as user {}".format(username)}, 201
 
 	def delete(self):
 		"""Delete user, requires password as confirmation"""
@@ -82,7 +82,7 @@ class APIList(Resource):
 				if all(key in args["info"] for key in required):
 					info = args["info"]
 					apiID = db.createAPI(get_jwt_identity(), info["name"], info["contact"], info["description"])
-					return {"message": "Created API '{}'".format(info["name"]), "id": apiID}, 200
+					return {"message": "Created API '{}'".format(info["name"]), "id": apiID}, 201
 				else:
 					return {"message": "Failed to create API, not enough arguments (name, contact, description) provided"}, 400
 
@@ -95,7 +95,7 @@ class APIList(Resource):
 
 			allowed = ("name", "version", "size", "contact", "description")
 			if all(arg in allowed for arg in args["info"].keys()):
-				if db.updateAPI(apiID, **args["info"]):
+				if db.updateAPI(get_jwt_identity(), apiID, **args["info"]):
 					return {"message": "Updated API", "id": apiID}, 200
 				return {"message": "Failed to update API", "id": apiID}, 400
 			else:
@@ -106,7 +106,7 @@ class APIList(Resource):
 		parser = RequestParser()
 		parser.add_argument("id", help="Provide ID of API to delete", required=True, type=str)
 		apiID = parser.parse_args()["id"]
-		if db.deleteAPI(apiID):
+		if db.deleteAPI(get_jwt_identity(), apiID):
 			return {"message": "Successfully deleted API", "id": apiID}, 200
 		else:
 			return {"message": "Failed to delete API", "id": apiID}, 400
