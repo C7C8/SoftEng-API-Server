@@ -1,5 +1,6 @@
 import pymysql
 import uuid
+import base64
 from bcrypt import hashpw, gensalt, checkpw
 from sqlalchemy.util import NoneType
 
@@ -69,18 +70,18 @@ class APIDatabase:
 		# Verify the API actually exists and that this user owns it
 		self.cursor.execute("SELECT creator FROM api WHERE id=%s", apiID)
 		res = self.cursor.fetchone()
-		if len(res) == 0 or res[0] != username:
+		if type(res) == NoneType or res[0] != username:
 			return False
 
 		# I know, I know, I checked this over in app.py... this check ensures function can be used elsewhere, though
-		allowed = ("name", "version", "size", "contact", "description")
+		allowed = ("name", "version", "size", "contact", "description", "image", "image-type")
 		if not all(arg in allowed for arg in kwargs.keys()):
 			return False
 
 		# Slightly hacky: The arguments in the args dict are the same as the column names in the database API table...
 		# OH YEAH! Just iterate over every key, substituting in its name for the update, and the corresponding data
 		for key in kwargs.keys():
-			if key == "version":
+			if key == "version" or key == "image" or key == "image-type":
 				continue
 			sql = "UPDATE api SET {}=%s WHERE id=%s".format(key)
 			self.cursor.execute(sql, (kwargs[key], apiID))
@@ -89,8 +90,15 @@ class APIDatabase:
 		if "version" in kwargs.keys():
 			sql = "INSERT INTO version(apiId, info) VALUES (%s, %s)"
 			self.cursor.execute(sql, (apiID, kwargs["version"]))
+			self.cursor.execute("UPDATE api SET lastupdate=CURRENT_TIMESTAMP() WHERE id=%s", apiID)
 
 		self.connection.commit()
+
+		# Image processing: extract images, store them in working directory for now, store by API ID
+		if "image" in kwargs.keys() and "image-type" in kwargs.keys():
+			with open("img/" + apiID + "." + kwargs["image-type"], "wb") as image:
+				image.write(base64.standard_b64decode(kwargs["image"]))
+
 		return True
 
 	def deleteAPI(self, username, apiID):
