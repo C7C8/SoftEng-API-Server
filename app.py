@@ -101,6 +101,15 @@ class APIList(Resource):
 			else:
 				return {"message": "Invalid API field in info structure"}, 400
 
+	@jwt_required
+	def delete(self):
+		parser = RequestParser()
+		parser.add_argument("id", help="Provide ID of API to delete", required=True, type=str)
+		apiID = parser.parse_args()["id"]
+		if db.deleteAPI(apiID):
+			return {"message": "Successfully deleted API", "id": apiID}, 200
+		else:
+			return {"message": "Failed to delete API", "id": apiID}, 400
 
 api.add_resource(Auth, "/api/auth")
 api.add_resource(APIList, "/api/list")

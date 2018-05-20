@@ -91,3 +91,13 @@ class APIDatabase:
 
 		self.connection.commit()
 		return True
+
+	def deleteAPI(self, apiID):
+		# Verify the API actually exists
+		self.cursor.execute("SELECT id FROM api WHERE id=%s", apiID)
+		if len(self.cursor.fetchall()) == 0:
+			return False
+
+		self.cursor.execute("DELETE FROM api WHERE id=%s", apiID)
+		self.connection.commit()
+		return True
