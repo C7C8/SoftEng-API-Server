@@ -1,10 +1,15 @@
 from flask import Flask
 from flask_restful import Resource, Api, reqparse
-from database import APIDatabase, UsernameException
+from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, jwt_refresh_token_required, get_jwt_identity, JWTManager
+import datetime
+from apiDB import APIDatabase
 
 app = Flask(__name__)
 api = Api(app)
 db = APIDatabase()
+with open("key.txt", "r") as keyfile:
+	app.config["JWT_SECRET_KEY"] = keyfile.read()
+jwt = JWTManager(app)
 
 
 class Auth(Resource):
@@ -14,13 +19,16 @@ class Auth(Resource):
 		parser.add_argument("username", help="Must provide username to log in with", type=str, required=True)
 		parser.add_argument("password", help="Must provide password to log in with", type=str, required=True)
 		args = parser.parse_args()
-		try:
-			if db.authenticate(args["username"], args["password"]):
-				return "Success", 200
-			else:
-				return "Bad login", 401
-		except UsernameException:
-			return "Bad username", 401
+		if not db.authenticate(args["username"], args["password"]):
+			return {"message": "Incorrect username or password"}, 401
+		expires = datetime.timedelta(minutes=20)
+		atoken = create_access_token(args["username"], expires_delta=expires)
+		rtoken = create_refresh_token(args["username"], expires_delta=expires)
+		return {
+			"message": "Logged in as {}".format(args["username"]),
+			"access_token": atoken,
+			"refresh_token": rtoken
+		}, 200
 
 	def post(self):
 		"""Register new user"""
@@ -37,11 +45,9 @@ class Auth(Resource):
 		term = args["term"]
 		year = args["year"]
 		team = args["team"]
-		try:
-			db.registerUser(username, password, term, year, team)
-		except UsernameException:
-			return "Username exists", 403
-		return "Success", 200
+		if not db.registerUser(username, password, term, year, team):
+			return {"message": "Registration failed"}, 403
+		return {"message": "Successfully registered as user {}".format(username)}, 200
 
 	def delete(self):
 		"""Delete user, requires password as confirmation"""
@@ -49,14 +55,11 @@ class Auth(Resource):
 		parser.add_argument("username", help="Must provide username to log in with", required=True, type=str)
 		parser.add_argument("password", help="Must provide password to log in with", required=True, type=str)
 		args = parser.parse_args()
-		try:
-			if db.authenticate(args["username"], args["password"]):
-				db.deleteUser(args["username"])
-				return "Success", 200
-			else:
-				return "Bad login", 401
-		except UsernameException:
-			return "Bad username", 401
+		if db.authenticate(args["username"], args["password"]):
+			db.deleteUser(args["username"])
+			return {"message": "Successfully deleted user {}".format(args["username"])}, 200
+		else:
+			return {"message": "Incorrect username or password"}, 401
 
 
 api.add_resource(Auth, "/auth")

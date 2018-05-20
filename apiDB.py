@@ -3,10 +3,6 @@ from bcrypt import hashpw, gensalt, checkpw
 from sqlalchemy.util import NoneType
 
 
-class UsernameException(Exception):
-	pass
-
-
 class APIDatabase:
 	def __init__(self):
 		self.connection = pymysql.connect(
@@ -27,11 +23,12 @@ class APIDatabase:
 		sql = "SELECT username FROM users WHERE username=%s"
 		self.cursor.execute(sql, username)
 		if len(self.cursor.fetchall()) > 0:
-			raise UsernameException("User already exists in database")
+			return False
 
 		sql = "INSERT INTO users (username, password, term, year, team) VALUES(%s, %s, %s, %s, %s)"
 		self.cursor.execute(sql, (username, hashpw(password, gensalt()), term, year, team))
 		self.connection.commit()
+		return True
 
 	def deleteUser(self, username):
 		sql = "DELETE FROM users WHERE username=%s"
@@ -44,9 +41,6 @@ class APIDatabase:
 		self.cursor.execute(sql, username)
 		res = self.cursor.fetchone()
 		if type(res) is NoneType:
-			raise UsernameException("Couldn't find username")
+			return False
 
 		return checkpw(password, res[0])
-
-	def getToken(self, username):
-		pass
