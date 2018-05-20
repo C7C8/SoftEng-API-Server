@@ -54,11 +54,14 @@ class APIDatabase:
 		sql = "INSERT INTO api (id, name, version, contact, description, creator) VALUES(%s, %s, '1.0.0', %s, %s, %s)"
 		id = str(uuid.uuid4())
 		self.cursor.execute(sql, (id, name, contact, description, username))
-		self.connection.commit()
 
 		# Create single entry in version table
 		sql = "INSERT INTO version(apiId, info) VALUES (%s, %s)"
 		self.cursor.execute(sql, (id, "1.0.0 Initial release"))
+		self.connection.commit()
 		# TODO Create function for updating JSON file
 
 		return id
+
+	def updateAPI(self, id, **kwargs):
+		"""Update an API entry... anything about it"""

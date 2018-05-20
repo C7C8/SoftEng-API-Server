@@ -70,15 +70,25 @@ class APIList(Resource):
 
 	@jwt_required
 	def post(self):
-		"""Create/update API entry"""
+		"""Create API data"""
 		parser = RequestParser()
-		parser.add_argument("name", help="Provide name of API", required=True, type=str)
-		parser.add_argument("version", help="Provide API version string", required=True, type=str)
-		parser.add_argument("contact", help="Provide email address of API maintainer", required=True, type=str)
-		parser.add_argument("description", help="Provide long form description of API", required=False, type=str)
+		parser.add_argument("action", help="Must provide an action to perform: create, update", required=True, type=str)
+		parser.add_argument("info", help="Provide API information as a JSON object", required=True, type=dict)
 		args = parser.parse_args()
-		id = db.createAPI(get_jwt_identity(), args["name"], args["contact"], args["description"])
-		return {"message": "Created {}".format(args["name"]), "id": id}, 200
+		action = args["action"]
+
+		if action == "create":
+				required = ("name","contact", "description")
+				if all(arg in required for arg in args["info"]):
+					info = args["info"]
+					apiID = db.createAPI(get_jwt_identity(), info["name"], info["contact"], info["description"])
+					return {"message": "Created API '{}'".format(info["name"]), "id": apiID}, 200
+				else:
+					return {"message": "Failed to create API, not enough arguments (name, contact, description) provided"}, 400
+
+		elif action == "update":
+			pass
+
 
 api.add_resource(Auth, "/api/auth")
 api.add_resource(APIList, "/api/list")
