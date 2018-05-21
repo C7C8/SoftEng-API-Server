@@ -98,14 +98,14 @@ class APIList(Resource):
 			if len(args["info"]) == 0:
 				return {"message": "Didn't include any data to update"}, 400
 
-			allowed = ("name", "version", "size", "contact", "description", "image", "jar")
+			allowed = ("name", "version", "contact", "description", "image", "jar")
 			if all(arg in allowed for arg in args["info"].keys()):
 				if db.updateAPI(get_jwt_identity(), apiID, **args["info"]):
 					return {"message": "Updated API", "id": apiID}, 200
 				else:
 					return {"message": "Failed to update API", "id": apiID}, 400
 			else:
-				return {"message": "Invalid API field in info structure"}, 400
+				return {"message": "Invalid field in info structure"}, 400
 
 	@jwt_required
 	def delete(self):

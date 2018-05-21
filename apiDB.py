@@ -1,10 +1,11 @@
-import pymysql
+import re
 import uuid
+import time
 import base64
 import magic
-import os
-from bcrypt import hashpw, gensalt, checkpw
+import pymysql
 from sqlalchemy.util import NoneType
+from bcrypt import hashpw, gensalt, checkpw
 
 
 class APIDatabase:
@@ -56,62 +57,73 @@ class APIDatabase:
 
 		# Create base entry in master API table
 		sql = "INSERT INTO api (id, name, version, contact, description, creator) VALUES(%s, %s, '1.0.0', %s, %s, %s)"
-		id = str(uuid.uuid4())
-		self.cursor.execute(sql, (id, name, contact, description, username))
+		apiID = str(uuid.uuid4())
+		self.cursor.execute(sql, (apiID, name, contact, description, username))
 
 		# Create single entry in version table
 		sql = "INSERT INTO version(apiId, info) VALUES (%s, %s)"
-		self.cursor.execute(sql, (id, "1.0.0 Initial release"))
+		self.cursor.execute(sql, (apiID, "1.0.0 Initial release"))
 		self.connection.commit()
 		# TODO Create function for updating JSON file
 
-		return id
+		return apiID
 
 	def updateAPI(self, username, apiID, **kwargs):
 		"""Update an API entry... anything about it. Returns whether operation succeeded"""
-		# Verify the API actually exists and that this user owns it
+		# Verify ownership of API
 		self.cursor.execute("SELECT creator FROM api WHERE id=%s", apiID)
 		res = self.cursor.fetchone()
 		if type(res) == NoneType or res[0] != username:
 			return False
 
-		# I know, I know, I checked this over in app.py... this check ensures function can be used elsewhere, though
-		allowed = ("name", "version", "size", "contact", "description", "image", "jar")
+		# Since these values are basically passed in RAW into the db, it's critical to verify only select keywords
+		# are allowed through.
+		allowed = ("name", "version", "contact", "description", "image", "jar")
 		if not all(arg in allowed for arg in kwargs.keys()):
 			return False
 
 		# Slightly hacky: The arguments in the args dict are the same as the column names in the database API table...
 		# OH YEAH! Just iterate over every key, substituting in its name for the update, and the corresponding data
 		for key in kwargs.keys():
-			if key == "version" or key == "image" or key == "image-type":
+			if key == "version" or key == "image" or key == "jar":
 				continue
 			sql = "UPDATE api SET {}=%s WHERE id=%s".format(key)
 			self.cursor.execute(sql, (kwargs[key], apiID))
 
-		# Add new version to the list
-		if "version" in kwargs.keys():
-			sql = "INSERT INTO version(apiId, info) VALUES (%s, %s)"
-			self.cursor.execute(sql, (apiID, kwargs["version"]))
-			self.cursor.execute("UPDATE api SET lastupdate=CURRENT_TIMESTAMP() WHERE id=%s", apiID)
-
-		self.connection.commit()
-
-		# Image processing: extract images, store them in working directory for now, store by API ID
+		# Image processing: deocde b64-encoded images, store them in img/directory for now, using API ID
 		mime = magic.Magic(mime=True)
 		if "image" in kwargs.keys():
-			filename = "img/" + apiID
-			print(filename)
-			with open(filename, "wb") as image:
-				image.write(base64.standard_b64decode(kwargs["image"]))
-
-			# Apply appropriate file extension, otherwise delete non-image files
-			print(mime.from_file(filename))
-			mtype = mime.from_file(filename)
-			if mtype.find("image/") == -1:
-				os.remove(filename)
+			data = base64.standard_b64decode(kwargs["image"])
+			mtype = mime.from_buffer(data)
+			if mtype.find("image/") != -1:
+				filename = "img/" + apiID + "." + mtype[mtype.find("/")+1:]
+				with open(filename, "wb") as image:
+					image.write(data)
 			else:
-				os.rename(filename, filename + "." + mtype[mtype.find("/")+1:])
+				print("Received image file for API " + apiID + ", but it wasn't an image!")
 
+		# Jar processing: decode b64-encoded jar files, store them in work. Make sure that an appropriate version string
+		# is provided, otherwise we can't add it to the repo. TODO Execute script to add jar files to Maven repository
+		if "jar" in kwargs.keys() and "version" in kwargs.keys():
+			data = base64.standard_b64decode(kwargs["jar"])
+			if mime.from_buffer(data).find("application/zip") != -1:
+				filename = "jar/" + apiID + ".jar"
+				with open(filename, "wb") as jar:
+					jar.write(base64.standard_b64decode(kwargs["jar"]))
+
+				# Update lastupdate time and version
+				sql = "UPDATE api SET lastupdate=%s, version=%s WHERE id=%s"
+				self.cursor.execute(sql, (time.time(), re.search("\d+\.\d+\.\d+", kwargs["version"]).group(0), apiID))
+
+
+				# Add version string to new entry in version table
+				sql = "INSERT INTO version(apiId, info) VALUES (%s, %s)"
+				self.cursor.execute(sql, (apiID, kwargs["version"]))
+				self.cursor.execute("UPDATE api SET lastupdate=CURRENT_TIMESTAMP() WHERE id=%s", apiID)
+			else:
+				print("Received jar file for API " + apiID + ", but it wasn't a jar file!")
+
+		self.connection.commit()
 		return True
 
 	def deleteAPI(self, username, apiID):
