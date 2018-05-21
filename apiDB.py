@@ -4,7 +4,6 @@ import time
 import base64
 import magic
 import pymysql
-from sqlalchemy.util import NoneType
 from bcrypt import hashpw, gensalt, checkpw
 
 
@@ -46,7 +45,7 @@ class APIDatabase:
 		sql = "SELECT password FROM users WHERE username=%s"
 		self.cursor.execute(sql, username)
 		res = self.cursor.fetchone()
-		if type(res) is NoneType:
+		if type(res) is None:
 			return False
 
 		return checkpw(password, res[0])
@@ -69,18 +68,17 @@ class APIDatabase:
 		return apiID
 
 	def updateAPI(self, username, apiID, **kwargs):
-		"""Update an API entry... anything about it. Returns whether operation succeeded"""
+		"""Update an API entry... anything about it. Returns whether operation succeeded, false+msg if it didn't"""
 		# Verify ownership of API
 		self.cursor.execute("SELECT creator FROM api WHERE id=%s", apiID)
-		res = self.cursor.fetchone()
-		if type(res) == NoneType or res[0] != username:
-			return False
+		vres = self.cursor.fetchone()
+		if vres is None or vres[0] != username:
+			return False, "Couldn't verify user ownership of API"
 
-		# Since these values are basically passed in RAW into the db, it's critical to verify only select keywords
-		# are allowed through.
+		# Since these values are basically passed in RAW into the db, it's critical to allow only select keywords
 		allowed = ("name", "version", "contact", "description", "image", "jar")
 		if not all(arg in allowed for arg in kwargs.keys()):
-			return False
+			return False, "Illegal API change argument"
 
 		# Slightly hacky: The arguments in the args dict are the same as the column names in the database API table...
 		# OH YEAH! Just iterate over every key, substituting in its name for the update, and the corresponding data
@@ -113,8 +111,11 @@ class APIDatabase:
 
 				# Update lastupdate time and version
 				sql = "UPDATE api SET lastupdate=%s, version=%s WHERE id=%s"
-				self.cursor.execute(sql, (time.time(), re.search("\d+\.\d+\.\d+", kwargs["version"]).group(0), apiID))
-
+				vres = re.search("\d+\.\d+\.\d+", kwargs["version"])
+				if vres is None:
+					self.connection.rollback()
+					return False, "Invalid version string, please provide versions formatted as #+.#+.#+ (e.g. 1.15.2)"
+				self.cursor.execute(sql, (time.time(), vres.group(0), apiID))
 
 				# Add version string to new entry in version table
 				sql = "INSERT INTO version(apiId, info) VALUES (%s, %s)"
@@ -124,7 +125,7 @@ class APIDatabase:
 				print("Received jar file for API " + apiID + ", but it wasn't a jar file!")
 
 		self.connection.commit()
-		return True
+		return True, "Updated API"
 
 	def deleteAPI(self, username, apiID):
 		# Verify the API actually exists and that this user owns it
