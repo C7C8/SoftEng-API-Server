@@ -16,6 +16,8 @@ jwt = JWTManager(app)
 
 if not os.path.exists("img"):
 	os.makedirs("img")
+if not os.path.exists("jar"):
+	os.makedirs("jar")  # TODO Make this invoke the Maven repo add script instead of just storing jars here
 
 class Auth(Resource):
 	def get(self):
@@ -96,7 +98,7 @@ class APIList(Resource):
 			if len(args["info"]) == 0:
 				return {"message": "Didn't include any data to update"}, 400
 
-			allowed = ("name", "version", "size", "contact", "description", "image", "image-type")
+			allowed = ("name", "version", "size", "contact", "description", "image", "jar")
 			if all(arg in allowed for arg in args["info"].keys()):
 				if db.updateAPI(get_jwt_identity(), apiID, **args["info"]):
 					return {"message": "Updated API", "id": apiID}, 200

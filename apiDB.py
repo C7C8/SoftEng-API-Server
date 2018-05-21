@@ -1,6 +1,8 @@
 import pymysql
 import uuid
 import base64
+import magic
+import os
 from bcrypt import hashpw, gensalt, checkpw
 from sqlalchemy.util import NoneType
 
@@ -74,7 +76,7 @@ class APIDatabase:
 			return False
 
 		# I know, I know, I checked this over in app.py... this check ensures function can be used elsewhere, though
-		allowed = ("name", "version", "size", "contact", "description", "image", "image-type")
+		allowed = ("name", "version", "size", "contact", "description", "image", "jar")
 		if not all(arg in allowed for arg in kwargs.keys()):
 			return False
 
@@ -95,9 +97,20 @@ class APIDatabase:
 		self.connection.commit()
 
 		# Image processing: extract images, store them in working directory for now, store by API ID
-		if "image" in kwargs.keys() and "image-type" in kwargs.keys():
-			with open("img/" + apiID + "." + kwargs["image-type"], "wb") as image:
+		mime = magic.Magic(mime=True)
+		if "image" in kwargs.keys():
+			filename = "img/" + apiID
+			print(filename)
+			with open(filename, "wb") as image:
 				image.write(base64.standard_b64decode(kwargs["image"]))
+
+			# Apply appropriate file extension, otherwise delete non-image files
+			print(mime.from_file(filename))
+			mtype = mime.from_file(filename)
+			if mtype.find("image/") == -1:
+				os.remove(filename)
+			else:
+				os.rename(filename, filename + "." + mtype[mtype.find("/")+1:])
 
 		return True
 
