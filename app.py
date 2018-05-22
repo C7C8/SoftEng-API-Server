@@ -12,8 +12,6 @@ from apiDB import APIDatabase
 # Set up flask
 app = Flask(__name__)
 api = Api(app)
-db = APIDatabase()
-jwt = JWTManager(app)
 
 # Load configuration
 conf = {
@@ -27,12 +25,13 @@ try:
 except FileNotFoundError:
 	print("Couldn't load server conf 'conf.json', using default settings! This is extremely dangerous!")
 
-
 app.config["JWT_SECRET_KEY"] = conf["jwt-key"]
+jwt = JWTManager(app)
 if not os.path.exists(conf["img-dir"]):
 	os.makedirs(conf["img-dir"])
 if not os.path.exists(conf["jar-dir"]):
 	os.makedirs(conf["jar-dir"])  # TODO Make this invoke the Maven repo add script instead of just storing jars here
+db = APIDatabase(conf["img-dir"], conf["jar-dir"])
 
 
 class Auth(Resource):
@@ -48,21 +47,19 @@ class Auth(Resource):
 		atoken = create_access_token(args["username"], expires_delta=expires)
 		rtoken = create_refresh_token(args["username"], expires_delta=expires)
 		return {
-				   "message": "Logged in as {}".format(args["username"]),
-				   "access_token": atoken,
-				   "refresh_token": rtoken
-			   }, 200
+				"message": "Logged in as {}".format(args["username"]),
+				"access_token": atoken,
+				"refresh_token": rtoken
+			}, 200
 
 	def post(self):
 		"""Register new user"""
 		parser = RequestParser()
 		parser.add_argument("username", help="Must provide username to register", required=True, type=str)
 		parser.add_argument("password", help="Must provide password to set for new user", required=True, type=str)
-		parser.add_argument("term", help="Provide term (A,B,C,D) that user is registering from", required=True,
-							type=str)
+		parser.add_argument("term", help="Provide term (A,B,C,D) that user is registering from", required=True, type=str)
 		parser.add_argument("year", help="Provide year that user is registering from", required=True, type=int)
-		parser.add_argument("team", help="Provide letter of team that user is registering from", required=True,
-							type=str)
+		parser.add_argument("team", help="Provide letter of team that user is registering from", required=True, type=str)
 
 		args = parser.parse_args()
 		username = args["username"]
@@ -129,6 +126,7 @@ class APIList(Resource):
 			return {"message": "Successfully deleted API", "id": apiID}, 200
 		else:
 			return {"message": "Failed to delete API", "id": apiID}, 400
+
 
 # Run Flask stuff
 api.add_resource(Auth, "/api/auth")

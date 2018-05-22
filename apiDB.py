@@ -1,3 +1,4 @@
+import os
 import re
 import uuid
 import time
@@ -8,7 +9,7 @@ from bcrypt import hashpw, gensalt, checkpw
 
 
 class APIDatabase:
-	def __init__(self):
+	def __init__(self, imgdir, jardir):
 		self.connection = pymysql.connect(
 			host="localhost",
 			port=3306,
@@ -17,6 +18,9 @@ class APIDatabase:
 			database="apilist"
 		)
 		self.cursor = self.connection.cursor()
+
+		self.imgdir = imgdir
+		self.jardir = jardir
 
 	def __del__(self):
 		self.cursor.close()
@@ -100,7 +104,8 @@ class APIDatabase:
 			data = base64.standard_b64decode(kwargs["image"])
 			mtype = mime.from_buffer(data)
 			if mtype.find("image/") != -1:
-				filename = "img/" + apiID + "." + mtype[mtype.find("/") + 1:]
+				os.remove(self.__getImageName(apiID))
+				filename = self.imgdir + "/" + apiID + "." + mtype[mtype.find("/") + 1:]
 				with open(filename, "wb") as image:
 					image.write(data)
 			else:
@@ -111,7 +116,7 @@ class APIDatabase:
 		if "jar" in kwargs.keys() and "version" in kwargs.keys():
 			data = base64.standard_b64decode(kwargs["jar"])
 			if mime.from_buffer(data).find("application/zip") != -1:
-				filename = "jar/" + apiID + ".jar"
+				filename = self.jardir + "/" + apiID + ".jar"
 				with open(filename, "wb") as jar:
 					jar.write(base64.standard_b64decode(kwargs["jar"]))
 
@@ -134,12 +139,21 @@ class APIDatabase:
 		return True, "Updated API"
 
 	def deleteAPI(self, username, apiID):
+		"""Delete an API and its associated image. Jar files are left intact since others may rely on them."""
+
 		# Verify the API actually exists and that this user owns it
 		self.cursor.execute("SELECT creator FROM api WHERE id=%s", apiID)
 		res = self.cursor.fetchone()
-		if len(res) == 0 or res[0] != username:
+		if res is None or res[0] != username:
 			return False
 
 		self.cursor.execute("DELETE FROM api WHERE id=%s", apiID)
 		self.connection.commit()
+		os.remove(self.__getImageName(apiID))
 		return True
+
+	def __getImageName(self, apiID):
+		for file in os.listdir(self.imgdir):
+			if file.startswith(apiID):
+				return self.imgdir + "/" + file
+		return None
