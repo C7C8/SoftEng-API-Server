@@ -27,27 +27,25 @@ class APIDatabase:
 		self.cursor.close()
 		self.connection.close()
 
-	def registerUser(self, username, password, term, year, team):
+	def registerUser(self, username, password):
 		"""Add a user to the database, if they don't already exist."""
-		sql = "SELECT username FROM users WHERE username=%s"
-		self.cursor.execute(sql, username)
-		if len(self.cursor.fetchall()) > 0:
+		if self.checkUserExists(username):
 			return False
 
-		sql = "INSERT INTO users (username, password, term, year, team) VALUES(%s, %s, %s, %s, %s)"
-		self.cursor.execute(sql, (username, hashpw(password, gensalt()), term, year, team))
+		sql = "INSERT INTO user (username, password) VALUES(%s, %s)"
+		self.cursor.execute(sql, (username, hashpw(password, gensalt())))
 		self.connection.commit()
 		return True
 
 	def deleteUser(self, username):
 		"""Delete a user from the database"""
-		sql = "DELETE FROM users WHERE username=%s"
+		sql = "DELETE FROM user WHERE username=%s"
 		self.cursor.execute(sql, username)
 		self.connection.commit()
 
 	def authenticate(self, username, password):
 		"""Authenticate username/password combo, just returns true/false"""
-		sql = "SELECT password FROM users WHERE username=%s"
+		sql = "SELECT password FROM user WHERE username=%s"
 		self.cursor.execute(sql, username)
 		res = self.cursor.fetchone()
 		if type(res) is None:
@@ -55,23 +53,24 @@ class APIDatabase:
 
 		return checkpw(password, res[0])
 
-	def createAPI(self, username, name, contact, description):
+	def checkUserExists(self, username):
+		"""Verify that a user exists; helper function for JWT authentication"""
+		sql = "SELECT * FROM user WHERE username=%s"
+		self.cursor.execute(sql, username)
+		return self.cursor.fetchone() is not None
+
+	def createAPI(self, username, name, contact, description, term, year, team):
 		"""Create base API entry, returns API ID on success"""
 
 		# Calculate artifact ID and group ID
 		artifactID = name.replace(" ", "")
-		sql = "SELECT term, year, team FROM users WHERE username=%s"
-		self.cursor.execute(sql, username)
-		res = self.cursor.fetchone()
-		if res is None:
-			return "error"
-		groupID = res[0].lower() + str(res[1])[2:] + ".team" + res[2].upper()
+		groupID = term.lower() + str(year)[2:] + ".team" + team.upper()
 
 		# Create base entry in master API table
-		sql = "INSERT INTO api (id, name, version, contact, description, creator, artifactID, groupID) " \
-			"VALUES(%s, %s, '1.0.0', %s, %s, %s, %s, %s)"
+		sql = "INSERT INTO api (id, name, version, contact, description, creator, artifactID, groupID, term, year, team) " \
+			"VALUES(%s, %s, '1.0.0', %s, %s, %s, %s, %s, %s, %s, %s)"
 		apiID = str(uuid.uuid4())
-		self.cursor.execute(sql, (apiID, name, contact, description, username, artifactID, groupID))
+		self.cursor.execute(sql, (apiID, name, contact, description, username, artifactID, groupID, term, year, team))
 		self.connection.commit()
 
 		# TODO Create function for updating JSON file
@@ -87,7 +86,7 @@ class APIDatabase:
 			return False, "Couldn't verify user ownership of API"
 
 		# Since these values are basically passed in RAW into the db, it's critical to allow only select keywords
-		allowed = ("name", "version", "contact", "description", "image", "jar")
+		allowed = ("name", "version", "contact", "term", "year", "team", "description", "image", "jar")
 		if not all(arg in allowed for arg in kwargs.keys()):
 			return False, "Illegal API change argument"
 
@@ -122,13 +121,13 @@ class APIDatabase:
 				with open(filename, "wb") as jar:
 					jar.write(base64.standard_b64decode(kwargs["jar"]))
 
-				# Update lastupdate time, version, and size
-				sql = "UPDATE api SET lastupdate=%s, version=%s, size=%s WHERE id=%s"
+				# Update version and size
+				sql = "UPDATE api SET version=%s, size=%s WHERE id=%s"
 				vres = re.search("\d+\.\d+\.\d+", kwargs["version"])
 				if vres is None:
 					self.connection.rollback()
 					return False, "Invalid version string, please provide versions formatted as #+.#+.#+ (e.g. 1.15.2)"
-				self.cursor.execute(sql, (int(time.time()), vres.group(0), len(data) / 1000000, apiID))
+				self.cursor.execute(sql, (vres.group(0), len(data) / 1000000, apiID))
 
 				# Add version string to new entry in version table
 				sql = "INSERT INTO version(apiId, info) VALUES (%s, %s)"
@@ -159,12 +158,12 @@ class APIDatabase:
 		"""Get an API info dict using apiID or a groupID+artifactID combination"""
 		# Get basic API info
 		if apiID is None:
-			sql = "SELECT name, contact, artifactID, groupID, version, description, lastupdate, id, creator, size " \
-					"FROM api WHERE artifactID=%s AND groupID=%s"
+			sql = "SELECT name, contact, artifactID, groupID, version, description, lastupdate, id, creator, size, " \
+					"term, year, team FROM api WHERE artifactID=%s AND groupID=%s"
 			self.cursor.execute(sql, (artifactID, groupID))
 		else:
-			sql = "SELECT name, contact, artifactID, groupID, version, description, lastupdate, id, creator, size " \
-					"FROM api WHERE id=%s"
+			sql = "SELECT name, contact, artifactID, groupID, version, description, lastupdate, id, creator, size, " \
+					"term, year, team FROM api WHERE id=%s"
 			self.cursor.execute(sql, apiID)
 
 		res = self.cursor.fetchone()
@@ -182,16 +181,11 @@ class APIDatabase:
 			"gradle": "[group: '{}', name: '{}', version:'{}']".format(res[3], res[2], res[4]),
 			"description": res[5],
 			"image": self.__getImageName(apiID),
-			"last-update": time.mktime(res[6].timetuple())
+			"last-update": time.mktime(res[6].timetuple()),
+			"term": res[10],
+			"year": res[11],
+			"team": res[12]
 		}
-
-		# Get user data
-		sql = "SELECT term, year, team FROM users WHERE username=%s"
-		self.cursor.execute(sql, res[8])
-		res = self.cursor.fetchone()
-		ret["term"] = res[0]
-		ret["year"] = res[1]
-		ret["team"] = res[2]
 
 		# Get version history
 		sql = "SELECT info FROM version WHERE apiID=%s"
@@ -207,27 +201,24 @@ class APIDatabase:
 
 	def exportToJSON(self, filename):
 		"""Export the API db to a certain format JSON file"""
-		sql = "SELECT id, term, year FROM api, users WHERE creator=username"
+
+		# Get summed size of all up-to-date APIs in the library
+		sql = "SELECT SUM(size), COUNT(*) FROM api"
 		self.cursor.execute(sql)
-		resultset = self.cursor.fetchall()
+		resultset = self.cursor.fetchone()
 		if resultset is None:
-			return
-
-		# Sort the result set; can't be done in the DB because of conditional logic involved in term ordering
-		resultset = sorted(resultset, key=(lambda a: str(a[2] - 1 if a[1] > 'B' else a[2]) + a[1]), reverse=True)
-
+			try:
+				os.remove(filename)  # Lose the export file if we don't have any APIs in storage
+			except FileNotFoundError:
+				pass
 		ret = {
-			"count": len(resultset),
+			"count": resultset[1],
+			"totalCount": 0,
+			"size": int(resultset[0]),
+			"totalSize": 0
 		}
 
-		# Get size of up-to-date API library
-		sql = "SELECT SUM(size) FROM api"
-		self.cursor.execute(sql)
-		ret["size"] = int(self.cursor.fetchone()[0])
-
 		# Get count+size of ALL currently stored jar files
-		ret["totalCount"] = 0
-		ret["totalSize"] = 0
 		for path, names, files in os.walk(self.jardir):
 			for file in files:
 				if not file.endswith(".jar"):
@@ -237,6 +228,12 @@ class APIDatabase:
 				ret["totalSize"] += os.path.getsize(f) / 1000000
 
 		# Populate base API info
+		sql = "SELECT id, term, year FROM api"
+		self.cursor.execute(sql)
+		resultset = self.cursor.fetchall()
+		# Sort the result set; can't be done in the DB because of conditional logic involved in term ordering
+		resultset = sorted(resultset, key=(lambda a: str(a[2] - 1 if a[1] > 'B' else a[2]) + a[1]), reverse=True)
+
 		currTerm = None
 		currYear = None
 		index = -1

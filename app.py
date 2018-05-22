@@ -58,19 +58,11 @@ class Auth(Resource):
 		parser = RequestParser()
 		parser.add_argument("username", help="Must provide username to register", required=True, type=str)
 		parser.add_argument("password", help="Must provide password to set for new user", required=True, type=str)
-		parser.add_argument("term", help="Provide term (A,B,C,D) that user is registering from", required=True, type=str)
-		parser.add_argument("year", help="Provide year that user is registering from", required=True, type=int)
-		parser.add_argument("team", help="Provide letter of team that user is registering from", required=True, type=str)
 
 		args = parser.parse_args()
-		username = args["username"]
-		password = args["password"]
-		term = args["term"]
-		year = args["year"]
-		team = args["team"]
-		if not db.registerUser(username, password, term, year, team):
+		if not db.registerUser(args["username"], args["password"]):
 			return {"message": "Registration failed"}, 403
-		return {"message": "Successfully registered as user {}".format(username)}, 201
+		return {"message": "Successfully registered as user {}".format(args["username"])}, 201
 
 	def delete(self):
 		"""Delete user, requires password as confirmation"""
@@ -89,6 +81,9 @@ class APIList(Resource):
 
 	@jwt_required
 	def post(self):
+		if not db.checkUserExists(get_jwt_identity()):
+			return {"message": "User does not exist", "username": get_jwt_identity()}, 401
+
 		"""Create or update API data"""
 		parser = RequestParser()
 		parser.add_argument("action", help="Must provide an action to perform: create, update", required=True, type=str)
@@ -97,16 +92,17 @@ class APIList(Resource):
 		action = args["action"]
 
 		if action == "create":
-				required = ("name", "contact", "description")
-				if all(key in args["info"] for key in required):
-					info = args["info"]
-					apiID = db.createAPI(get_jwt_identity(), info["name"], info["contact"], info["description"])
-					if apiID != "error":
-						return {"message": "Created API '{}'".format(info["name"]), "id": apiID}, 201
-					else:
-						return {"message": "Failed to create API, this error isn't supposed to happen!"}, 400
+			required = ("name", "contact", "description", "term", "year", "team")
+			if all(key in args["info"] for key in required):
+				info = args["info"]
+				apiID = db.createAPI(get_jwt_identity(), info["name"], info["contact"], info["description"], info["term"],
+																									info["year"], info["team"])
+				if apiID != "error":
+					return {"message": "Created API '{}'".format(info["name"]), "id": apiID}, 201
 				else:
-					return {"message": "Failed to create API, not enough arguments (name, contact, description) provided"}, 400
+					return {"message": "Failed to create API, this error isn't supposed to happen!"}, 400
+			else:
+				return {"message": "Failed to create API, not enough arguments (name, contact, description, term, year, team) provided"}, 400
 
 		elif action == "update":
 			parser.add_argument("id", help="Must provide ID of API to update", required=True, type=str)
@@ -121,6 +117,9 @@ class APIList(Resource):
 
 	@jwt_required
 	def delete(self):
+		if not db.checkUserExists(get_jwt_identity()):
+			return {"message": "User does not exist", "username": get_jwt_identity()}, 401
+
 		parser = RequestParser()
 		parser.add_argument("id", help="Provide ID of API to delete", required=True, type=str)
 		apiID = parser.parse_args()["id"]
