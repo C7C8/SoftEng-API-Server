@@ -51,18 +51,24 @@ class APIDatabase:
 		return checkpw(password, res[0])
 
 	def createAPI(self, username, name, contact, description):
-		"""Create an API entry. Returns the API's ID. Not allowed to provide a version string because it's automatically
-		set to '1.0.0 Initial release'"""
+		"""Create base API entry, returns API ID on success"""
+
+		# Calculate artifact ID and group ID
+		artifactID = name.replace(" ", "")
+		sql = "SELECT term, year, team FROM users WHERE username=%s"
+		self.cursor.execute(sql, username)
+		res = self.cursor.fetchone()
+		if res is None:
+			return "error"
+		groupID = res[0] + str(res[1])[2:] + ".team" + res[2]
 
 		# Create base entry in master API table
-		sql = "INSERT INTO api (id, name, version, contact, description, creator) VALUES(%s, %s, '1.0.0', %s, %s, %s)"
+		sql = "INSERT INTO api (id, name, version, contact, description, creator, artifactID, groupID) " \
+			"VALUES(%s, %s, '1.0.0', %s, %s, %s, %s, %s)"
 		apiID = str(uuid.uuid4())
-		self.cursor.execute(sql, (apiID, name, contact, description, username))
-
-		# Create single entry in version table
-		sql = "INSERT INTO version(apiId, info) VALUES (%s, %s)"
-		self.cursor.execute(sql, (apiID, "1.0.0 Initial release"))
+		self.cursor.execute(sql, (apiID, name, contact, description, username, artifactID, groupID))
 		self.connection.commit()
+
 		# TODO Create function for updating JSON file
 
 		return apiID
@@ -88,13 +94,13 @@ class APIDatabase:
 			sql = "UPDATE api SET {}=%s WHERE id=%s".format(key)
 			self.cursor.execute(sql, (kwargs[key], apiID))
 
-		# Image processing: deocde b64-encoded images, store them in img/directory for now, using API ID
+		# Image processing: decode b64-encoded images, store them in img/directory for now, using API ID
 		mime = magic.Magic(mime=True)
 		if "image" in kwargs.keys():
 			data = base64.standard_b64decode(kwargs["image"])
 			mtype = mime.from_buffer(data)
 			if mtype.find("image/") != -1:
-				filename = "img/" + apiID + "." + mtype[mtype.find("/")+1:]
+				filename = "img/" + apiID + "." + mtype[mtype.find("/") + 1:]
 				with open(filename, "wb") as image:
 					image.write(data)
 			else:
@@ -115,7 +121,7 @@ class APIDatabase:
 				if vres is None:
 					self.connection.rollback()
 					return False, "Invalid version string, please provide versions formatted as #+.#+.#+ (e.g. 1.15.2)"
-				self.cursor.execute(sql, (time.time(), vres.group(0), apiID))
+				self.cursor.execute(sql, (int(time.time()), vres.group(0), apiID))
 
 				# Add version string to new entry in version table
 				sql = "INSERT INTO version(apiId, info) VALUES (%s, %s)"

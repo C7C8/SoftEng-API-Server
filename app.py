@@ -87,7 +87,10 @@ class APIList(Resource):
 				if all(key in args["info"] for key in required):
 					info = args["info"]
 					apiID = db.createAPI(get_jwt_identity(), info["name"], info["contact"], info["description"])
-					return {"message": "Created API '{}'".format(info["name"]), "id": apiID}, 201
+					if apiID != "error":
+						return {"message": "Created API '{}'".format(info["name"]), "id": apiID}, 201
+					else:
+						return {"message": "Failed to create API, this error isn't supposed to happen!"}, 400
 				else:
 					return {"message": "Failed to create API, not enough arguments (name, contact, description) provided"}, 400
 
