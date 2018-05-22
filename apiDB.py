@@ -158,7 +158,6 @@ class APIDatabase:
 	def getAPIInfo(self, apiID=None, groupID=None, artifactID=None):
 		"""Get an API info dict using apiID or a groupID+artifactID combination"""
 		# Get basic API info
-		res = None
 		if apiID is None:
 			sql = "SELECT name, contact, artifactID, groupID, version, description, lastupdate, id, creator FROM api " \
 					"WHERE artifactID=%s AND groupID=%s"

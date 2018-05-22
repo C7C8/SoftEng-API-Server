@@ -139,13 +139,13 @@ class APIList(Resource):
 											"group/artifact combination"}, 400
 
 		res = None
-		if "id" in args.keys():
+		if args["id"] is not None:
 			res = db.getAPIInfo(apiID=args["id"])
-		if "artifactID" in args.keys():
+		elif args["groupID"] is not None and args["artifactID"] is not None:
 			res = db.getAPIInfo(groupID=args["groupID"], artifactID=args["artifactID"])
 
 		if res is None:
-			return {"message": "Failed to find API", "id": args["apiID"]}, 400
+			return {"message": "Failed to find API", "id": args["id"]}, 400
 		return res
 
 
