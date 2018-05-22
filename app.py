@@ -17,7 +17,8 @@ api = Api(app)
 conf = {
 	"jwt-key": "DEFAULT PRIVATE KEY",
 	"img-dir": "img",
-	"jar-dir": "jar"
+	"jar-dir": "jar",
+	"json-output": "apilist.json"
 }
 try:
 	with open("conf.json", "r") as file:

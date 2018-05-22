@@ -2,7 +2,7 @@ import os
 import re
 import uuid
 import time
-import datetime
+import json
 import base64
 import magic
 import pymysql
@@ -122,13 +122,13 @@ class APIDatabase:
 				with open(filename, "wb") as jar:
 					jar.write(base64.standard_b64decode(kwargs["jar"]))
 
-				# Update lastupdate time and version
-				sql = "UPDATE api SET lastupdate=%s, version=%s WHERE id=%s"
+				# Update lastupdate time, version, and size
+				sql = "UPDATE api SET lastupdate=%s, version=%s, size=%s WHERE id=%s"
 				vres = re.search("\d+\.\d+\.\d+", kwargs["version"])
 				if vres is None:
 					self.connection.rollback()
 					return False, "Invalid version string, please provide versions formatted as #+.#+.#+ (e.g. 1.15.2)"
-				self.cursor.execute(sql, (int(time.time()), vres.group(0), apiID))
+				self.cursor.execute(sql, (int(time.time()), vres.group(0), len(data) / 1000000, apiID))
 
 				# Add version string to new entry in version table
 				sql = "INSERT INTO version(apiId, info) VALUES (%s, %s)"
@@ -163,7 +163,8 @@ class APIDatabase:
 					"WHERE artifactID=%s AND groupID=%s"
 			self.cursor.execute(sql, (artifactID, groupID))
 		else:
-			sql = "SELECT name, contact, artifactID, groupID, version, description, lastupdate, id, creator FROM api WHERE id=%s"
+			sql = "SELECT name, contact, artifactID, groupID, version, description, lastupdate, id, creator, size " \
+					"FROM api WHERE id=%s"
 			self.cursor.execute(sql, apiID)
 
 		res = self.cursor.fetchone()
@@ -176,7 +177,7 @@ class APIDatabase:
 			"id": apiID,
 			"name": res[0],
 			"version": res[4],
-			"size": os.path.getsize(self.jardir + "/" + apiID + ".jar") / 1000000,  # Size in MB, TODO Make this Maven-y
+			"size": res[9],
 			"contact": res[1],
 			"gradle": "[group: '{}', name: '{}', version:'{}']".format(res[3], res[2], res[4]),
 			"description": res[5],
@@ -203,6 +204,58 @@ class APIDatabase:
 
 		ret["history"] = vlist
 		return ret
+
+	def exportToJSON(self, filename):
+		"""Export the API db to a certain format JSON file"""
+		sql = "SELECT id, term, year FROM api, users WHERE creator=username"
+		self.cursor.execute(sql)
+		resultset = self.cursor.fetchall()
+		if resultset is None:
+			return
+
+		# Sort the result set; can't be done in the DB because of conditional logic involved in term ordering
+		resultset = sorted(resultset, key=(lambda a: str(a[2] - 1 if a[1] > 'B' else a[2]) + a[1]), reverse=True)
+
+		ret = {
+			"count": len(resultset),
+		}
+
+		# Get size of up-to-date API library
+		sql = "SELECT SUM(size) FROM api"
+		self.cursor.execute(sql)
+		ret["size"] = int(self.cursor.fetchone()[0])
+
+		# Get count+size of ALL currently stored jar files
+		ret["totalCount"] = 0
+		ret["totalSize"] = 0
+		for path, names, files in os.walk(self.jardir):
+			for file in files:
+				if not file.endswith(".jar"):
+					pass
+				f = os.path.join(path, file)
+				ret["totalCount"] += 1
+				ret["totalSize"] += os.path.getsize(f) / 1000000
+
+		# Populate base API info
+		currTerm = None
+		currYear = None
+		index = -1
+		ret["classes"] = []
+		for api in resultset:
+			apiInfo = self.getAPIInfo(apiID=api[0])
+			if (apiInfo["term"] != currTerm) or (apiInfo["year"] != currYear):
+				currTerm = apiInfo["term"]
+				currYear = apiInfo["year"]
+				index += 1
+				ret["classes"].append({
+					"term": currTerm,
+					"year": currYear,
+					"list": []
+				})
+			ret["classes"][index]["list"].append(apiInfo)
+
+		with open(filename, "w") as out:
+			out.write(json.dumps(ret))
 
 	def __getImageName(self, apiID):
 		for file in os.listdir(self.imgdir):
