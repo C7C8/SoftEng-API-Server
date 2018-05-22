@@ -127,6 +127,27 @@ class APIList(Resource):
 		else:
 			return {"message": "Failed to delete API", "id": apiID}, 400
 
+	def get(self):
+		"""Get information on an API, using its ID or its artifact+groupID"""
+		parser = RequestParser()
+		parser.add_argument("id", required=False, type=str)
+		parser.add_argument("artifactID", required=False, type=str)
+		parser.add_argument("groupID", required=False, type=str)
+		args = parser.parse_args()
+		if ("id" not in args.keys()) and (("artifactID" not in args.keys()) or ("groupID" not in args.keys())):
+			return {"message": "Didn't provide enough info to retrieve API; either provide an ID or use a "
+											"group/artifact combination"}, 400
+
+		res = None
+		if "id" in args.keys():
+			res = db.getAPIInfo(apiID=args["id"])
+		if "artifactID" in args.keys():
+			res = db.getAPIInfo(groupID=args["groupID"], artifactID=args["artifactID"])
+
+		if res is None:
+			return {"message": "Failed to find API", "id": args["apiID"]}, 400
+		return res
+
 
 # Run Flask stuff
 api.add_resource(Auth, "/api/auth")

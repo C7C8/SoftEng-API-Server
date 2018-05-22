@@ -2,6 +2,7 @@ import os
 import re
 import uuid
 import time
+import datetime
 import base64
 import magic
 import pymysql
@@ -64,7 +65,7 @@ class APIDatabase:
 		res = self.cursor.fetchone()
 		if res is None:
 			return "error"
-		groupID = res[0] + str(res[1])[2:] + ".team" + res[2]
+		groupID = res[0].lower() + str(res[1])[2:] + ".team" + res[2].upper()
 
 		# Create base entry in master API table
 		sql = "INSERT INTO api (id, name, version, contact, description, creator, artifactID, groupID) " \
@@ -104,7 +105,8 @@ class APIDatabase:
 			data = base64.standard_b64decode(kwargs["image"])
 			mtype = mime.from_buffer(data)
 			if mtype.find("image/") != -1:
-				os.remove(self.__getImageName(apiID))
+				if self.__getImageName(apiID) is not None:
+					os.remove(self.__getImageName(apiID))
 				filename = self.imgdir + "/" + apiID + "." + mtype[mtype.find("/") + 1:]
 				with open(filename, "wb") as image:
 					image.write(data)
@@ -149,8 +151,59 @@ class APIDatabase:
 
 		self.cursor.execute("DELETE FROM api WHERE id=%s", apiID)
 		self.connection.commit()
-		os.remove(self.__getImageName(apiID))
+		if self.__getImageName(apiID) is not None:
+			os.remove(self.__getImageName(apiID))
 		return True
+
+	def getAPIInfo(self, apiID=None, groupID=None, artifactID=None):
+		"""Get an API info dict using apiID or a groupID+artifactID combination"""
+		# Get basic API info
+		res = None
+		if apiID is None:
+			sql = "SELECT name, contact, artifactID, groupID, version, description, lastupdate, id, creator FROM api " \
+					"WHERE artifactID=%s AND groupID=%s"
+			self.cursor.execute(sql, (artifactID, groupID))
+		else:
+			sql = "SELECT name, contact, artifactID, groupID, version, description, lastupdate, id, creator FROM api WHERE id=%s"
+			self.cursor.execute(sql, apiID)
+
+		res = self.cursor.fetchone()
+		if res is None:
+			return None
+		apiID = res[7]  # Just in case it groupID+artifactID were provided instead
+
+		# Fill out base API info data structure
+		ret = {
+			"id": apiID,
+			"name": res[0],
+			"version": res[4],
+			"size": os.path.getsize(self.jardir + "/" + apiID + ".jar") / 1000000,  # Size in MB, TODO Make this Maven-y
+			"contact": res[1],
+			"gradle": "[group: '{}', name: '{}', version:'{}']".format(res[3], res[2], res[4]),
+			"description": res[5],
+			"image": self.__getImageName(apiID),
+			"last-update": time.mktime(res[6].timetuple())
+		}
+
+		# Get user data
+		sql = "SELECT term, year, team FROM users WHERE username=%s"
+		self.cursor.execute(sql, res[8])
+		res = self.cursor.fetchone()
+		ret["term"] = res[0]
+		ret["year"] = res[1]
+		ret["team"] = res[2]
+
+		# Get version history
+		sql = "SELECT info FROM version WHERE apiID=%s"
+		self.cursor.execute(sql, apiID)
+		res = self.cursor.fetchall()
+		vlist = []
+		if res is not None and len(res) > 0:
+			for version in res:
+				vlist.append(version[0])
+
+		ret["history"] = vlist
+		return ret
 
 	def __getImageName(self, apiID):
 		for file in os.listdir(self.imgdir):
