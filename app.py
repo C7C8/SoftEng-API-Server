@@ -1,23 +1,39 @@
 import os
+import datetime
+from json import loads
 from flask import Flask
 from flask_restful.reqparse import RequestParser
 from flask_restful import Resource, Api
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, jwt_refresh_token_required, \
 	get_jwt_identity, JWTManager
-import datetime
+
 from apiDB import APIDatabase
 
+# Set up flask
 app = Flask(__name__)
 api = Api(app)
 db = APIDatabase()
-with open("key.txt", "r") as keyfile:
-	app.config["JWT_SECRET_KEY"] = keyfile.read()
 jwt = JWTManager(app)
 
-if not os.path.exists("img"):
-	os.makedirs("img")
-if not os.path.exists("jar"):
-	os.makedirs("jar")  # TODO Make this invoke the Maven repo add script instead of just storing jars here
+# Load configuration
+conf = {
+	"jwt-key": "DEFAULT PRIVATE KEY",
+	"img-dir": "img",
+	"jar-dir": "jar"
+}
+try:
+	with open("conf.json", "r") as file:
+		conf = loads(file.read())
+except FileNotFoundError:
+	print("Couldn't load server conf 'conf.json', using default settings! This is extremely dangerous!")
+
+
+app.config["JWT_SECRET_KEY"] = conf["jwt-key"]
+if not os.path.exists(conf["img-dir"]):
+	os.makedirs(conf["img-dir"])
+if not os.path.exists(conf["jar-dir"]):
+	os.makedirs(conf["jar-dir"])  # TODO Make this invoke the Maven repo add script instead of just storing jars here
+
 
 class Auth(Resource):
 	def get(self):
@@ -114,8 +130,8 @@ class APIList(Resource):
 		else:
 			return {"message": "Failed to delete API", "id": apiID}, 400
 
+# Run Flask stuff
 api.add_resource(Auth, "/api/auth")
 api.add_resource(APIList, "/api/list")
-
 if __name__ == "__main__":
 	app.run(port="5000")
