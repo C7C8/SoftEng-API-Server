@@ -116,6 +116,7 @@ class APIList(Resource):
 				return {"message": "Didn't include any data to update"}, 400
 
 			stat, message = db.updateAPI(get_jwt_identity(), apiID, **args["info"])
+			db.exportToJSON(conf["json-output"])
 			return {"message": message, "id": apiID}, 200 if stat else 400
 
 	@jwt_required
@@ -124,6 +125,7 @@ class APIList(Resource):
 		parser.add_argument("id", help="Provide ID of API to delete", required=True, type=str)
 		apiID = parser.parse_args()["id"]
 		if db.deleteAPI(get_jwt_identity(), apiID):
+			db.exportToJSON(conf["json-output"])
 			return {"message": "Successfully deleted API", "id": apiID}, 200
 		else:
 			return {"message": "Failed to delete API", "id": apiID}, 400
