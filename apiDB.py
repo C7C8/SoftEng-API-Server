@@ -107,7 +107,7 @@ class APIDatabase:
 			if mtype.find("image/") != -1:
 				if self.__getImageName(apiID) is not None:
 					os.remove(self.__getImageName(apiID))
-				filename = self.imgdir + "/" + apiID + "." + mtype[mtype.find("/") + 1:]
+				filename = os.path.join(self.imgdir, apiID + "." + mtype[mtype.find("/") + 1:])
 				with open(filename, "wb") as image:
 					image.write(data)
 			else:
@@ -118,7 +118,7 @@ class APIDatabase:
 		if "jar" in kwargs.keys() and "version" in kwargs.keys():
 			data = base64.standard_b64decode(kwargs["jar"])
 			if mime.from_buffer(data).find("application/zip") != -1:
-				filename = self.jardir + "/" + apiID + ".jar"
+				filename = os.path.join(self.jardir, apiID + ".jar")
 				with open(filename, "wb") as jar:
 					jar.write(base64.standard_b64decode(kwargs["jar"]))
 
@@ -159,8 +159,8 @@ class APIDatabase:
 		"""Get an API info dict using apiID or a groupID+artifactID combination"""
 		# Get basic API info
 		if apiID is None:
-			sql = "SELECT name, contact, artifactID, groupID, version, description, lastupdate, id, creator FROM api " \
-					"WHERE artifactID=%s AND groupID=%s"
+			sql = "SELECT name, contact, artifactID, groupID, version, description, lastupdate, id, creator, size " \
+					"FROM api WHERE artifactID=%s AND groupID=%s"
 			self.cursor.execute(sql, (artifactID, groupID))
 		else:
 			sql = "SELECT name, contact, artifactID, groupID, version, description, lastupdate, id, creator, size " \
@@ -260,5 +260,5 @@ class APIDatabase:
 	def __getImageName(self, apiID):
 		for file in os.listdir(self.imgdir):
 			if file.startswith(apiID):
-				return self.imgdir + "/" + file
+				return os.path.join(self.imgdir, file)
 		return None
