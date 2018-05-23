@@ -114,6 +114,8 @@ class APIList(Resource):
 												"group/artifact combination"}, 400
 			args = parser.parse_args()
 			apiID = args["id"] if args["id"] is not None else db.getAPIId(args["groupID"], args["artifactID"])
+			if apiID is None:
+				return {"message": "Failed to find API"}, 400
 
 			if len(args["info"]) == 0:
 				return {"message": "Didn't include any data to update"}, 400
@@ -138,7 +140,7 @@ class APIList(Resource):
 
 		apiID = args["id"] if args["id"] is not None else db.getAPIId(args["groupID"], args["artifactID"])
 
-		if db.deleteAPI(get_jwt_identity(), apiID):
+		if apiID is not None and db.deleteAPI(get_jwt_identity(), apiID):
 			db.exportToJSON(conf["json-output"])
 			return {"message": "Successfully deleted API", "id": apiID}, 200
 		else:

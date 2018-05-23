@@ -79,16 +79,24 @@ class APIDatabase:
 
 	def updateAPI(self, username, apiID, **kwargs):
 		"""Update an API entry... anything about it. Returns whether operation succeeded, false+msg if it didn't"""
+
+		# VERIFICATION
+
 		# Verify ownership of API
 		self.cursor.execute("SELECT creator FROM api WHERE id=%s", apiID)
-		vres = self.cursor.fetchone()
-		if vres is None or vres[0] != username:
+		res = self.cursor.fetchone()
+		if res is None or res[0] != username:
 			return False, "Couldn't verify user ownership of API"
 
 		# Since these values are basically passed in RAW into the db, it's critical to allow only select keywords
 		allowed = ("name", "version", "contact", "term", "year", "team", "description", "image", "jar")
 		if not all(arg in allowed for arg in kwargs.keys()):
 			return False, "Illegal API change argument"
+
+		if "version" in kwargs["version"] and re.search("\d+\.\d+\.\d+", kwargs["version"]) is None:
+			return False, "Invalid version string, please provide versions formatted as #+.#+.#+ (e.g. 1.15.2)"
+
+		# UPDATES
 
 		# Slightly hacky: The arguments in the args dict are the same as the column names in the database API table...
 		# OH YEAH! Just iterate over every key, substituting in its name for the update, and the corresponding data
@@ -121,18 +129,18 @@ class APIDatabase:
 				with open(filename, "wb") as jar:
 					jar.write(base64.standard_b64decode(kwargs["jar"]))
 
-				# Update version and size
-				sql = "UPDATE api SET version=%s, size=%s WHERE id=%s"
+				# Update version, size, timestamp
+				sql = "UPDATE api SET version=%s, size=%s, lastupdate=CURRENT_TIMESTAMP() WHERE id=%s"
 				vres = re.search("\d+\.\d+\.\d+", kwargs["version"])
-				if vres is None:
-					self.connection.rollback()
-					return False, "Invalid version string, please provide versions formatted as #+.#+.#+ (e.g. 1.15.2)"
 				self.cursor.execute(sql, (vres.group(0), len(data) / 1000000, apiID))
 
 				# Add version string to new entry in version table
-				sql = "INSERT INTO version(apiId, info) VALUES (%s, %s)"
-				self.cursor.execute(sql, (apiID, kwargs["version"]))
-				self.cursor.execute("UPDATE api SET lastupdate=CURRENT_TIMESTAMP() WHERE id=%s", apiID)
+				sql = "INSERT INTO version(apiId, vnumber, info) VALUES (%s, %s, %s)"
+				try:
+					self.cursor.execute(sql, (apiID, vres.group(0), kwargs["version"].replace(vres.group(0), "").lstrip()))
+				except pymysql.IntegrityError:
+					self.connection.rollback()
+					return False, "Failed to update API; duplicate version detected"
 			else:
 				print("Received jar file for API " + apiID + ", but it wasn't a jar file!")
 
@@ -190,13 +198,13 @@ class APIDatabase:
 		}
 
 		# Get version history
-		sql = "SELECT info FROM version WHERE apiID=%s"
+		sql = "SELECT vnumber, info FROM version WHERE apiID=%s"
 		self.cursor.execute(sql, apiID)
 		res = self.cursor.fetchall()
 		vlist = []
 		if res is not None and len(res) > 0:
 			for version in res:
-				vlist.append(version[0])
+				vlist.append(version[0] + ": " + version[1])
 
 		ret["history"] = vlist
 		return ret
@@ -205,7 +213,7 @@ class APIDatabase:
 		"""Export the API db to a certain format JSON file"""
 
 		# Get summed size of all up-to-date APIs in the library
-		sql = "SELECT SUM(size), COUNT(*) FROM api"
+		sql = "SELECT IFNULL(SUM(size), 0), COUNT(*) FROM api"
 		self.cursor.execute(sql)
 		resultset = self.cursor.fetchone()
 		if resultset is None:
