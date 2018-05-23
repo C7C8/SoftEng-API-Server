@@ -157,7 +157,10 @@ class APIList(Resource):
 			return {"message": "Didn't provide enough info to find API; either provide an ID or use a "
 											"group/artifact combination"}, 400
 
+		# Python won't let me do C-style assignments in if statements, so yeah, there's duped code here. Deal with it.
 		apiID = args["id"] if args["id"] is not None else db.getAPIId(args["groupID"], args["artifactID"])
+		if apiID is None:
+			return {"message": "Failed to find API", "id": args["id"]}, 400
 		res = db.getAPIInfo(apiID)
 		if res is None:
 			return {"message": "Failed to find API", "id": args["id"]}, 400
