@@ -154,22 +154,24 @@ class APIDatabase:
 			os.remove(self.__getImageName(apiID))
 		return True
 
-	def getAPIInfo(self, apiID=None, groupID=None, artifactID=None):
-		"""Get an API info dict using apiID or a groupID+artifactID combination"""
-		# Get basic API info
-		if apiID is None:
-			sql = "SELECT name, contact, artifactID, groupID, version, description, lastupdate, id, creator, size, " \
-					"term, year, team FROM api WHERE artifactID=%s AND groupID=%s"
-			self.cursor.execute(sql, (artifactID, groupID))
-		else:
-			sql = "SELECT name, contact, artifactID, groupID, version, description, lastupdate, id, creator, size, " \
-					"term, year, team FROM api WHERE id=%s"
-			self.cursor.execute(sql, apiID)
-
+	def getAPIId(self, groupID, artifactID):
+		"""Get an API's ID, required for database operations involving APIs"""
+		sql = "SELECT id FROM api WHERE groupID=%s AND artifactID=%s"
+		self.cursor.execute(sql, (groupID, artifactID))
 		res = self.cursor.fetchone()
 		if res is None:
 			return None
-		apiID = res[7]  # Just in case it groupID+artifactID were provided instead
+		return res[0]
+
+	def getAPIInfo(self, apiID):
+		"""Get an API info dict using apiID or a groupID+artifactID combination"""
+		# Get basic API info
+		sql = "SELECT name, contact, artifactID, groupID, version, description, lastupdate, id, creator, size, " \
+			"term, year, team FROM api WHERE id=%s"
+		self.cursor.execute(sql, apiID)
+		res = self.cursor.fetchone()
+		if res is None:
+			return None
 
 		# Fill out base API info data structure
 		ret = {

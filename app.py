@@ -105,9 +105,16 @@ class APIList(Resource):
 				return {"message": "Failed to create API, not enough arguments (name, contact, description, term, year, team) provided"}, 400
 
 		elif action == "update":
-			parser.add_argument("id", help="Must provide ID of API to update", required=True, type=str)
+			parser.add_argument("id", help="Provide API's ID", required=False, type=str)
+			parser.add_argument("groupID", help="Provide API's group ID", required=False, type=str)
+			parser.add_argument("artifactID", help="Provide API's artifact ID", required=False, type=str)
 			args = parser.parse_args()
-			apiID = args["id"]
+			if (args["id"] is None) and ((args["artifactID"] is None) or (args["groupID"] is None)):
+				return {"message": "Didn't provide enough info to find API; either provide an ID or use a "
+												"group/artifact combination"}, 400
+			args = parser.parse_args()
+			apiID = args["id"] if args["id"] is not None else db.getAPIId(args["groupID"], args["artifactID"])
+
 			if len(args["info"]) == 0:
 				return {"message": "Didn't include any data to update"}, 400
 
@@ -121,8 +128,16 @@ class APIList(Resource):
 			return {"message": "User does not exist", "username": get_jwt_identity()}, 401
 
 		parser = RequestParser()
-		parser.add_argument("id", help="Provide ID of API to delete", required=True, type=str)
-		apiID = parser.parse_args()["id"]
+		parser.add_argument("id", help="Provide API's ID", required=False, type=str)
+		parser.add_argument("groupID", help="Provide API's group ID", required=False, type=str)
+		parser.add_argument("artifactID", help="Provide API's artifact ID", required=False, type=str)
+		args = parser.parse_args()
+		if (args["id"] is None) and ((args["artifactID"] is None) or (args["groupID"] is None)):
+			return {"message": "Didn't provide enough info to find API; either provide an ID or use a "
+											"group/artifact combination"}, 400
+
+		apiID = args["id"] if args["id"] is not None else db.getAPIId(args["groupID"], args["artifactID"])
+
 		if db.deleteAPI(get_jwt_identity(), apiID):
 			db.exportToJSON(conf["json-output"])
 			return {"message": "Successfully deleted API", "id": apiID}, 200
@@ -136,16 +151,12 @@ class APIList(Resource):
 		parser.add_argument("artifactID", required=False, type=str)
 		parser.add_argument("groupID", required=False, type=str)
 		args = parser.parse_args()
-		if ("id" not in args.keys()) and (("artifactID" not in args.keys()) or ("groupID" not in args.keys())):
-			return {"message": "Didn't provide enough info to retrieve API; either provide an ID or use a "
+		if (args["id"] is None) and ((args["artifactID"] is None) or (args["groupID"] is None)):
+			return {"message": "Didn't provide enough info to find API; either provide an ID or use a "
 											"group/artifact combination"}, 400
 
-		res = None
-		if args["id"] is not None:
-			res = db.getAPIInfo(apiID=args["id"])
-		elif args["groupID"] is not None and args["artifactID"] is not None:
-			res = db.getAPIInfo(groupID=args["groupID"], artifactID=args["artifactID"])
-
+		apiID = args["id"] if args["id"] is not None else db.getAPIId(args["groupID"], args["artifactID"])
+		res = db.getAPIInfo(apiID)
 		if res is None:
 			return {"message": "Failed to find API", "id": args["id"]}, 400
 		return res
