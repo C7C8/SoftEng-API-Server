@@ -2,7 +2,7 @@ import os
 import datetime
 from json import loads
 from flask import Flask, Blueprint
-from flask_restplus import Api, Namespace, Resource, reqparse, fields
+from flask_restplus import Api, Resource, reqparse, fields
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager
 
 from apiDB import APIDatabase

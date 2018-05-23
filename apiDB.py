@@ -102,7 +102,6 @@ class APIDatabase:
 		if not self.__validate_args(**kwargs):
 			return False, "Arguments failed validity check"
 
-
 		# UPDATES
 
 		# Slightly hacky: The arguments in the args dict are the same as the column names in the database API table...
@@ -131,25 +130,39 @@ class APIDatabase:
 		# is provided, otherwise we can't add it to the repo. TODO Execute script to add jar files to Maven repository
 		if "jar" in kwargs.keys() and "version" in kwargs.keys():
 			data = base64.standard_b64decode(kwargs["jar"])
-			if mime.from_buffer(data).find("application/zip") != -1:
-				filename = os.path.join(self.jardir, apiID + ".jar")
-				with open(filename, "wb") as jar:
-					jar.write(base64.standard_b64decode(kwargs["jar"]))
+			if mime.from_buffer(data).find("application/zip") == -1:
+				self.connection.rollback()
+				return False, "Received file for API but it wasn't a jar file!"
 
-				# Update version, size, timestamp
-				sql = "UPDATE api SET version=%s, size=%s, lastupdate=CURRENT_TIMESTAMP() WHERE id=%s"
-				vres = re.search("\d+\.\d+\.\d+", kwargs["version"])
-				self.cursor.execute(sql, (vres.group(0), len(data) / 1000000, apiID))
+			# Update version, size, timestamp
+			sql = "UPDATE api SET version=%s, size=%s, lastupdate=CURRENT_TIMESTAMP() WHERE id=%s"
+			vstring = re.search("\d+\.\d+\.\d+", kwargs["version"]).group(0) # Safe because we already validated it
+			self.cursor.execute(sql, (vstring, len(data) / 1000000, apiID))
 
-				# Add version string to new entry in version table
-				sql = "INSERT INTO version(apiId, vnumber, info) VALUES (%s, %s, %s)"
-				try:
-					self.cursor.execute(sql, (apiID, vres.group(0), kwargs["version"].replace(vres.group(0), "").lstrip()))
-				except pymysql.IntegrityError:
-					self.connection.rollback()
-					return False, "Failed to update API; duplicate version detected"
-			else:
-				print("Received jar file for API " + apiID + ", but it wasn't a jar file!")
+			# Add version string to new entry in version table
+			sql = "INSERT INTO version(apiId, vnumber, info) VALUES (%s, %s, %s)"
+			try:
+				self.cursor.execute(sql, (apiID, vstring, kwargs["version"].replace(vstring, "").lstrip()))
+			except pymysql.IntegrityError:
+				self.connection.rollback()
+				return False, "Failed to update API; duplicate version detected"
+
+			filename = os.path.join(self.jardir, apiID + ".jar")
+			with open(filename, "wb") as jar:
+				jar.write(base64.standard_b64decode(kwargs["jar"]))
+
+			# Install jar file into maven repository! Yeah, I do it with a system() command, sue me
+			sql = "SELECT groupID, artifactID FROM api WHERE id=%s"
+			self.cursor.execute(sql, apiID)
+			res = self.cursor.fetchone()
+			os.system("mvn install:install-file -Dfile={} "
+					  "-DgroupId={} "
+					  "-DartifactId={} "
+					  "-Dversion={} "
+					  "-Dpackaging=jar "
+					  "-DlocalRepositoryPath={}"
+					  .format(filename, res[0], res[1], vstring, self.jardir))
+			os.remove(filename)
 
 		self.connection.commit()
 		return True, "Updated API"
@@ -205,7 +218,7 @@ class APIDatabase:
 		}
 
 		# Get version history
-		sql = "SELECT vnumber, info FROM version WHERE apiID=%s"
+		sql = "SELECT vnumber, info FROM version WHERE apiID=%s ORDER BY vnumber DESC"
 		self.cursor.execute(sql, apiID)
 		res = self.cursor.fetchall()
 		vlist = []
@@ -239,7 +252,7 @@ class APIDatabase:
 		for path, names, files in os.walk(self.jardir):
 			for file in files:
 				if not file.endswith(".jar"):
-					pass
+					continue
 				f = os.path.join(path, file)
 				ret["totalCount"] += 1
 				ret["totalSize"] += os.path.getsize(f) / 1000000
