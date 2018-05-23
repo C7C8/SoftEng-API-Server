@@ -27,6 +27,7 @@ app.config["JWT_SECRET_KEY"] = conf["jwt-key"]
 jwt = JWTManager(app)
 apiV1 = Blueprint('api', __name__)
 api = Api(apiV1, version="1.0.0", title="CS 3733 API API", description="Not a typo")
+jwt._set_error_handler_callbacks(api)  # plz stop returning 500 Server Error
 ns = api.namespace("api", description="API list functionality")
 
 db = APIDatabase(conf["img-dir"], conf["jar-dir"])
