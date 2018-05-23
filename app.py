@@ -13,7 +13,12 @@ conf = {
 	"jwt-key": "DEFAULT PRIVATE KEY",
 	"img-dir": "img",
 	"jar-dir": "jar",
-	"json-output": "apilist.json"
+	"json-output": "apilist.json",
+	"db-host": "localhost",
+	"db-port": 3306,
+	"db-user": "list-api-service",
+	"db-password": "pass",
+	"db-schema": "apilist"
 }
 try:
 	with open("conf.json", "r") as file:
@@ -31,7 +36,8 @@ api = Api(apiV1, version="1.0.0", title="CS 3733 API API", description="Not a ty
 jwt._set_error_handler_callbacks(api)  # plz stop returning 500 Server Error
 ns = api.namespace("api", description="API list functionality")
 
-db = APIDatabase(conf["img-dir"], conf["jar-dir"])
+db = APIDatabase(conf["db-host"], conf["db-port"], conf["db-user"], conf["db-password"], conf["db-schema"],
+				 conf["img-dir"], conf["jar-dir"])
 
 if not os.path.exists(conf["img-dir"]):
 	os.makedirs(conf["img-dir"])

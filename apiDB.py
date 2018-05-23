@@ -10,13 +10,13 @@ from bcrypt import hashpw, gensalt, checkpw
 
 
 class APIDatabase:
-	def __init__(self, imgdir, jardir):
+	def __init__(self, host, port, user, password, schema, imgdir, jardir):
 		self.connection = pymysql.connect(
-			host="localhost",
-			port=3306,
-			user="list-api-service",
-			password="pass",
-			database="apilist"
+			host=host,
+			port=port,
+			user=user,
+			password=password,
+			database=schema
 		)
 		self.cursor = self.connection.cursor()
 
