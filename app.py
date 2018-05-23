@@ -1,17 +1,12 @@
 import os
 import datetime
 from json import loads
-from flask import Flask
-from flask_restful.reqparse import RequestParser
-from flask_restful import Resource, Api
-from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, jwt_refresh_token_required, \
-	get_jwt_identity, JWTManager
+from flask import Flask, Blueprint
+from flask_restplus import Api, Namespace, Resource, reqparse
+from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, JWTManager
 
 from apiDB import APIDatabase
 
-# Set up flask
-app = Flask(__name__)
-api = Api(app)
 
 # Load configuration
 conf = {
@@ -26,19 +21,27 @@ try:
 except FileNotFoundError:
 	print("Couldn't load server conf 'conf.json', using default settings! This is extremely dangerous!")
 
+# Set up flask
+app = Flask(__name__)
 app.config["JWT_SECRET_KEY"] = conf["jwt-key"]
 jwt = JWTManager(app)
+apiV1 = Blueprint('api', __name__)
+api = Api(apiV1, version="1.0.0", title="CS 3733 API API", description="Not a typo")
+ns = api.namespace("api", description="API list functionality")
+
+db = APIDatabase(conf["img-dir"], conf["jar-dir"])
+
 if not os.path.exists(conf["img-dir"]):
 	os.makedirs(conf["img-dir"])
 if not os.path.exists(conf["jar-dir"]):
 	os.makedirs(conf["jar-dir"])  # TODO Make this invoke the Maven repo add script instead of just storing jars here
-db = APIDatabase(conf["img-dir"], conf["jar-dir"])
 
 
+@ns.route("/auth")
 class Auth(Resource):
 	def get(self):
 		"""Login, return a token"""
-		parser = RequestParser()
+		parser = reqparse.RequestParser()
 		parser.add_argument("username", help="Must provide username to log in with", type=str, required=True)
 		parser.add_argument("password", help="Must provide password to log in with", type=str, required=True)
 		args = parser.parse_args()
@@ -55,7 +58,7 @@ class Auth(Resource):
 
 	def post(self):
 		"""Register new user"""
-		parser = RequestParser()
+		parser = reqparse.RequestParser()
 		parser.add_argument("username", help="Must provide username to register", required=True, type=str)
 		parser.add_argument("password", help="Must provide password to set for new user", required=True, type=str)
 
@@ -66,7 +69,7 @@ class Auth(Resource):
 
 	def delete(self):
 		"""Delete user, requires password as confirmation"""
-		parser = RequestParser()
+		parser = reqparse.RequestParser()
 		parser.add_argument("username", help="Must provide username to log in with", required=True, type=str)
 		parser.add_argument("password", help="Must provide password to log in with", required=True, type=str)
 		args = parser.parse_args()
@@ -77,15 +80,15 @@ class Auth(Resource):
 			return {"message": "Incorrect username or password"}, 401
 
 
+@ns.route("/list")
 class APIList(Resource):
-
 	@jwt_required
 	def post(self):
+		"""Create or update API data"""
 		if not db.checkUserExists(get_jwt_identity()):
 			return {"message": "User does not exist", "username": get_jwt_identity()}, 401
 
-		"""Create or update API data"""
-		parser = RequestParser()
+		parser = reqparse.RequestParser()
 		parser.add_argument("action", help="Must provide an action to perform: create, update", required=True, type=str)
 		parser.add_argument("info", help="Provide API information as a JSON object", required=True, type=dict)
 		args = parser.parse_args()
@@ -102,7 +105,8 @@ class APIList(Resource):
 				else:
 					return {"message": "Failed to create API, this error isn't supposed to happen!"}, 400
 			else:
-				return {"message": "Failed to create API, not enough arguments (name, contact, description, term, year, team) provided"}, 400
+				return {"message": "Failed to create API, not enough arguments (name, contact, description, term, year, " 
+												"team) provided"}, 400
 
 		elif action == "update":
 			parser.add_argument("id", help="Provide API's ID", required=False, type=str)
@@ -126,10 +130,11 @@ class APIList(Resource):
 
 	@jwt_required
 	def delete(self):
+		"""Delete an API listing and all associated metadata. Does NOT delete Jar files from the Maven repository"""
 		if not db.checkUserExists(get_jwt_identity()):
 			return {"message": "User does not exist", "username": get_jwt_identity()}, 401
 
-		parser = RequestParser()
+		parser = reqparse.RequestParser()
 		parser.add_argument("id", help="Provide API's ID", required=False, type=str)
 		parser.add_argument("groupID", help="Provide API's group ID", required=False, type=str)
 		parser.add_argument("artifactID", help="Provide API's artifact ID", required=False, type=str)
@@ -148,7 +153,7 @@ class APIList(Resource):
 
 	def get(self):
 		"""Get information on an API, using its ID or its artifact+groupID"""
-		parser = RequestParser()
+		parser = reqparse.RequestParser()
 		parser.add_argument("id", required=False, type=str)
 		parser.add_argument("artifactID", required=False, type=str)
 		parser.add_argument("groupID", required=False, type=str)
@@ -167,8 +172,8 @@ class APIList(Resource):
 		return res
 
 
+app.register_blueprint(apiV1)
+print(app.url_map)
 # Run Flask stuff
-api.add_resource(Auth, "/api/auth")
-api.add_resource(APIList, "/api/list")
 if __name__ == "__main__":
-	app.run(port="5000")
+	app.run(port="5000", debug=True)
