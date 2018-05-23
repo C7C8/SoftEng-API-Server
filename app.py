@@ -116,7 +116,8 @@ class APIList(Resource):
 	})
 	apiBasicInfo = api.model("API Basic Info", {
 		"name": fields.String(description="Name of API. Will be converted to an artifact ID", example="API Update Checker"),
-		"contact": fields.String(description="Email address of API maintainer", example="email@wpi.edu"),
+		"contact": fields.String(description="Email address of API maintainer", example="email@wpi.edu",
+								 pattern="[^@]+@[^@]+\.[^@]+"),
 		"description": fields.String(description="Prose description of API. Markdown support coming soon"),
 		"term": fields.String(description="Term API was created in", enum=['A', 'B', 'C', 'D']),
 		"year": fields.Integer(description="Year of API creation", example=2018),
@@ -169,12 +170,12 @@ class APIList(Resource):
 			required = ("name", "contact", "description", "term", "year", "team")
 			if all(key in args["info"] for key in required):
 				info = args["info"]
-				apiID = db.createAPI(get_jwt_identity(), info["name"], info["contact"], info["description"], info["term"],
+				res, apiID = db.createAPI(get_jwt_identity(), info["name"], info["contact"], info["description"], info["term"],
 																									info["year"], info["team"])
-				if apiID != "error":
+				if res:
 					return {"message": "Created API '{}'".format(info["name"]), "id": apiID}, 201
 				else:
-					return {"message": "Failed to create API, this error isn't supposed to happen!"}, 400
+					return {"message": "Failed to create API: " + apiID}, 400
 			else:
 				return {"message": "Failed to create API, not enough arguments (name, contact, description, term, year, " 
 												"team) provided"}, 400

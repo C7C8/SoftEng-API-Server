@@ -62,20 +62,26 @@ class APIDatabase:
 	def createAPI(self, username, name, contact, description, term, year, team):
 		"""Create base API entry, returns API ID on success"""
 
+		if not self.__validate_args(contact=contact, term=term, year=year, team=team):
+			return False, "Bad arguments"
+
 		# Calculate artifact ID and group ID
-		artifactID = name.replace(" ", "")
+		artifactID = str().join(c for c in name if c.isalnum())
 		groupID = term.lower() + str(year)[2:] + ".team" + team.upper()
 
 		# Create base entry in master API table
 		sql = "INSERT INTO api (id, name, version, contact, description, creator, artifactID, groupID, term, year, team) " \
 			"VALUES(%s, %s, '1.0.0', %s, %s, %s, %s, %s, %s, %s, %s)"
 		apiID = str(uuid.uuid4())
-		self.cursor.execute(sql, (apiID, name, contact, description, username, artifactID, groupID, term, year, team))
+		try:
+			self.cursor.execute(sql, (apiID, name, contact, description, username, artifactID, groupID, term, year, team))
+		except pymysql.IntegrityError:
+			return False, "API with that artifact+groupID already exists, try changing your API's name"
 		self.connection.commit()
 
 		# TODO Create function for updating JSON file
 
-		return apiID
+		return True, apiID
 
 	def updateAPI(self, username, apiID, **kwargs):
 		"""Update an API entry... anything about it. Returns whether operation succeeded, false+msg if it didn't"""
@@ -93,8 +99,9 @@ class APIDatabase:
 		if not all(arg in allowed for arg in kwargs.keys()):
 			return False, "Illegal API change argument"
 
-		if "version" in kwargs["version"] and re.search("\d+\.\d+\.\d+", kwargs["version"]) is None:
-			return False, "Invalid version string, please provide versions formatted as #+.#+.#+ (e.g. 1.15.2)"
+		if not self.__validate_args(**kwargs):
+			return False, "Arguments failed validity check"
+
 
 		# UPDATES
 
@@ -269,3 +276,24 @@ class APIDatabase:
 			if file.startswith(apiID):
 				return os.path.join(self.imgdir, file)
 		return None
+
+	@staticmethod
+	def __validate_args(**kwargs):
+		"""Validates select API info args. Returns true if they check out, false otherwise"""
+		if "contact" in kwargs.keys():
+			# Simple email validation -- make sure there's exactly one @ and at least one . after it
+			if re.search("^[^@]+@[^@]+\.[^@]+$", kwargs["contact"]) is None:
+				return False
+		if "term" in kwargs.keys():
+			if kwargs["term"] not in ["A", "B", "C", "D"]:
+				return False
+		if "year" in kwargs.keys():
+			if re.search("^\d{4}$", str(kwargs["year"])) is None:
+				return False
+		if "team" in kwargs.keys():
+			if re.search("^[A-Z]$", kwargs["team"]) is None or len(kwargs["team"]) > 1:
+				return False
+		if "version" in kwargs.keys():
+			if re.search("^\d+\.\d+\.\d+", kwargs["version"]) is None:
+				return False
+		return True
