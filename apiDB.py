@@ -1,5 +1,6 @@
 import os
 import re
+import html
 import uuid
 import time
 import json
@@ -102,6 +103,11 @@ class APIDatabase:
 		artifactID = str().join(c for c in name if c.isalnum())
 		groupID = term.lower() + str(year)[2:] + ".team" + team.upper()
 
+		# Escape anything HTML-y
+		name = html.escape(name)
+		description = html.escape(description)
+		contact = html.escape(contact)
+
 		# Create base entry in master API table
 		sql = "INSERT INTO api (id, name, version, contact, description, creator, artifactID, groupID, term, year, team) " \
 			"VALUES(%s, %s, '1.0.0', %s, %s, %s, %s, %s, %s, %s, %s)"
@@ -142,6 +148,8 @@ class APIDatabase:
 		for key in kwargs.keys():
 			if key == "version" or key == "image" or key == "jar":
 				continue
+			if key == "description" or key == "name" or key == "contact":
+				kwargs[key] = html.escape(kwargs[key])
 			sql = "UPDATE api SET {}=%s WHERE id=%s".format(key)
 			self.cursor.execute(sql, (kwargs[key], apiID))
 
@@ -175,7 +183,7 @@ class APIDatabase:
 			# Add version string to new entry in version table
 			sql = "INSERT INTO version(apiId, vnumber, info) VALUES (%s, %s, %s)"
 			try:
-				self.cursor.execute(sql, (apiID, vstring, kwargs["version"].replace(vstring, "").lstrip()))
+				self.cursor.execute(sql, (apiID, vstring, html.escape(kwargs["version"].replace(vstring, "").lstrip())))
 			except pymysql.IntegrityError:
 				self.connection.rollback()
 				return False, "Failed to update API; duplicate version detected"
