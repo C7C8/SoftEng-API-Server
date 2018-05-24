@@ -318,9 +318,9 @@ class APIDatabase:
 				ret["classes"].append({
 					"term": currTerm,
 					"year": currYear,
-					"list": []
+					"apis": []
 				})
-			ret["classes"][index]["list"].append(apiInfo)
+			ret["classes"][index]["apis"].append(apiInfo)
 
 		with open(filename, "w") as out:
 			out.write(json.dumps(ret))
