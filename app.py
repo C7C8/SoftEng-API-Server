@@ -10,6 +10,7 @@ from apiDB import APIDatabase
 
 # Load configuration
 conf = {
+	"server-port": 5000,
 	"jwt-key": "DEFAULT PRIVATE KEY",
 	"img-dir": "img",
 	"jar-dir": "jar",
@@ -258,7 +259,6 @@ class APIList(Resource):
 
 
 app.register_blueprint(apiV1)
-print(app.url_map)
 # Run Flask stuff
 if __name__ == "__main__":
-	app.run(port="5000", debug=True)
+	app.run(port=conf["server-port"])
