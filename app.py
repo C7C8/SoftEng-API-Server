@@ -45,39 +45,65 @@ if not os.path.exists(conf["img-dir"]):
 if not os.path.exists(conf["jar-dir"]):
 	os.makedirs(conf["jar-dir"])  # TODO Make this invoke the Maven repo add script instead of just storing jars here
 
+# Data models
 msgModel = api.model("Status message", {
 	'message': fields.String(description="Status")
 })
+loginModel = api.model("Login credentials", {
+	'username': fields.String(description="Username to log in with", required=True),
+	'password': fields.String(description="Password to log in with", required=True)
+})
+tokenModel = api.inherit("Access token response", msgModel, {
+	'access_token': fields.String(description="JWT access token, use with header 'Authorization: Bearer XXXXX'")
+})
+apiIDModel = api.model("API Identification", {
+	"id": fields.String(description="UUID of API", required=False, example="9cdd30a7-9876-47e1-921c-c7471e6b7c3d"),
+	"groupID": fields.String(description="Group ID of API, provided with artifact ID in lieu of UUID", required=False,
+							 example="d18.teamD"),
+	"artifactID": fields.String(description="Artifact ID of API, provided with group ID in lieu of UUID",
+								required=False, example="APIUpdateChecker")
+})
+apiRetMsg = api.inherit("API Status Return", msgModel, {
+	"id": fields.String(description="UUID of API")
+})
+apiBasicInfo = api.model("API Basic Info", {
+	"name": fields.String(description="Name of API. Will be converted to an artifact ID", example="API Update Checker"),
+	"contact": fields.String(description="Email address of API maintainer", example="email@wpi.edu",
+							 pattern="[^@]+@[^@]+\.[^@]+"),
+	"description": fields.String(description="Prose description of API. Markdown support coming soon"),
+	"term": fields.String(description="Term API was created in", enum=['A', 'B', 'C', 'D']),
+	"year": fields.Integer(description="Year of API creation", example=2018),
+	"team": fields.String(description="Team that created the API", pattern="[A-Z]")
+})
+apiCompleteInfoModel = api.inherit("API Complete Info", apiBasicInfo, {
+	"id": fields.String(description="UUID of API", example="9cdd30a7-9876-47e1-921c-c7471e6b7c3d"),
+	"version": fields.String(description="Current version number of API", example="1.0.0", pattern="\d+\.\d+\.\d+"),
+	"size": fields.Integer(description="Size of API in MB", example=31),
+	"gradle": fields.String(description="Gradle dependency string",
+							example="[group: 'd18.teamA', name: 'APIUpdateChecker', version:'1.0.0']"),
+	"image": fields.String(description="URL to screenshot of API"),
+	"last-update": fields.Integer(description="Unix timestamp for when the API was last updated",
+								  example=892080000),
+	"history": fields.List(fields.String(description="Version history entry", example="1.0.0 Initial release"))
+})
+apiCreateModel = api.model("API Creation", {
+	"action": fields.String(description="Create", enum=["create"], required=True),
+	"info": fields.Nested(apiBasicInfo, required=True)
+})
+apiUpdateInfo = api.inherit("API Update Info", apiBasicInfo, {
+	"version": fields.String(description="Version string, must start with version number (see regex), must be"
+										 "accompanies by a jar file, number must not be duplicate", pattern="\d+\.d\+\.\d+"),
+	"image": fields.String(description="Base64-encoded image file. MIME-type must start with image/"),
+	"jar": fields.String(description="Base64-encoded Jar file. MIME-type must be application/zip")
+})
+apiUpdateModel = api.model("API Update", {
+	"action": fields.String(description="Update", enum=["create"], required=True),
+	"info": fields.Nested(apiUpdateInfo)
+})
 
 
-@ns.route("/auth")
-class Auth(Resource):
-	loginModel = api.model("Login credentials", {
-		'username': fields.String(description="Username to log in with", required=True),
-		'password': fields.String(description="Password to log in with", required=True)
-	})
-
-	tokenModel = api.inherit("Access token response", msgModel, {
-		'access_token': fields.String(description="JWT access token, use with header 'Authorization: Bearer XXXXX'")
-	})
-
-	@api.expect(loginModel)
-	@api.response(200, "Logged in", tokenModel)
-	@api.response(401, "Invalid credentials", msgModel)
-	def get(self):
-		"""Login, return a token"""
-		parser = reqparse.RequestParser()
-		parser.add_argument("username", help="Must provide username to log in with", type=str, required=True)
-		parser.add_argument("password", help="Must provide password to log in with", type=str, required=True)
-		args = parser.parse_args()
-		if not db.authenticate(args["username"], args["password"]):
-			return {"message": "Invalid credentials"}, 401
-		expires = datetime.timedelta(days=20)  # TODO: Change to 1 hour
-		atoken = create_access_token(args["username"], expires_delta=expires)
-		return {
-				"message": "Logged in as {}".format(args["username"]),
-				"access_token": atoken,
-			}, 200
+@ns.route("/auth/registration")
+class Register(Resource):
 
 	@api.expect(loginModel)
 	@api.response(201, "Registered new user", msgModel)
@@ -85,8 +111,8 @@ class Auth(Resource):
 	def post(self):
 		"""Register new user"""
 		parser = reqparse.RequestParser()
-		parser.add_argument("username", help="Must provide username to register", required=True, type=str)
-		parser.add_argument("password", help="Must provide password to set for new user", required=True, type=str)
+		parser.add_argument("username", help="Username", required=True, type=str)
+		parser.add_argument("password", help="Password", required=True, type=str)
 
 		args = parser.parse_args()
 		if not db.registerUser(args["username"], args["password"]):
@@ -109,52 +135,31 @@ class Auth(Resource):
 			return {"message": "Invalid credentials"}, 401
 
 
+@ns.route("/auth/login")
+class Login(Resource):
+
+	@api.expect(loginModel)
+	@api.response(200, "Logged in", tokenModel)
+	@api.response(401, "Invalid credentials", msgModel)
+	def post(self):
+		"""Login, return a token"""
+		parser = reqparse.RequestParser()
+		parser.add_argument("username", help="Username", required=True, type=str)
+		parser.add_argument("password", help="Password", required=True, type=str)
+
+		args = parser.parse_args()
+		if not db.authenticate(args["username"], args["password"]):
+			return {"message": "Invalid credentials"}, 401
+		expires = datetime.timedelta(days=20)  # TODO: Change to 1 hour
+		atoken = create_access_token(args["username"], expires_delta=expires)
+		return {
+				   "message": "Logged in as {}".format(args["username"]),
+				   "access_token": atoken,
+			   }, 200
+
+
 @ns.route("/list")
 class APIList(Resource):
-	apiIDModel = api.model("API Identification", {
-		"id": fields.String(description="UUID of API", required=False, example="9cdd30a7-9876-47e1-921c-c7471e6b7c3d"),
-		"groupID": fields.String(description="Group ID of API, provided with artifact ID in lieu of UUID", required=False,
-									example="d18.teamD"),
-		"artifactID": fields.String(description="Artifact ID of API, provided with group ID in lieu of UUID",
-									required=False, example="APIUpdateChecker")
-	})
-	apiRetMsg = api.inherit("API Status Return", msgModel, {
-		"id": fields.String(description="UUID of API")
-	})
-	apiBasicInfo = api.model("API Basic Info", {
-		"name": fields.String(description="Name of API. Will be converted to an artifact ID", example="API Update Checker"),
-		"contact": fields.String(description="Email address of API maintainer", example="email@wpi.edu",
-								 pattern="[^@]+@[^@]+\.[^@]+"),
-		"description": fields.String(description="Prose description of API. Markdown support coming soon"),
-		"term": fields.String(description="Term API was created in", enum=['A', 'B', 'C', 'D']),
-		"year": fields.Integer(description="Year of API creation", example=2018),
-		"team": fields.String(description="Team that created the API", pattern="[A-Z]")
-	})
-	apiCompleteInfoModel = api.inherit("API Complete Info", apiBasicInfo, {
-		"id": fields.String(description="UUID of API", example="9cdd30a7-9876-47e1-921c-c7471e6b7c3d"),
-		"version": fields.String(description="Current version number of API", example="1.0.0", pattern="\d+\.\d+\.\d+"),
-		"size": fields.Integer(description="Size of API in MB", example=31),
-		"gradle": fields.String(description="Gradle dependency string",
-								example="[group: 'd18.teamA', name: 'APIUpdateChecker', version:'1.0.0']"),
-		"image": fields.String(description="URL to screenshot of API"),
-		"last-update": fields.Integer(description="Unix timestamp for when the API was last updated",
-										example=892080000),
-		"history": fields.List(fields.String(description="Version history entry", example="1.0.0 Initial release"))
-	})
-	apiCreateModel = api.model("API Creation", {
-		"action": fields.String(description="Create", enum=["create"], required=True),
-		"info": fields.Nested(apiBasicInfo, required=True)
-	})
-	apiUpdateInfo = api.inherit("API Update Info", apiBasicInfo, {
-		"version": fields.String(description="Version string, must start with version number (see regex), must be"
-											 "accompanies by a jar file, number must not be duplicate", pattern="\d+\.d\+\.\d+"),
-		"image": fields.String(description="Base64-encoded image file. MIME-type must start with image/"),
-		"jar": fields.String(description="Base64-encoded Jar file. MIME-type must be application/zip")
-	})
-	apiUpdateModel = api.model("API Update", {
-		"action": fields.String(description="Update", enum=["create"], required=True),
-		"info": fields.Nested(apiUpdateInfo)
-	})
 
 	@jwt_required
 	@api.response(201, "API Created", apiRetMsg)
@@ -168,8 +173,8 @@ class APIList(Resource):
 			return {"message": "User does not exist", "username": get_jwt_identity()}, 401
 
 		parser = reqparse.RequestParser()
-		parser.add_argument("action", help="Must provide an action to perform: create, update", required=True, type=str)
-		parser.add_argument("info", help="Provide API information as a JSON object", required=True, type=dict)
+		parser.add_argument("action", help="Action (create, update)", required=True, type=str)
+		parser.add_argument("info", help="API information as a JSON object", required=True, type=dict)
 		args = parser.parse_args()
 		action = args["action"]
 
@@ -218,9 +223,9 @@ class APIList(Resource):
 			return {"message": "User does not exist", "username": get_jwt_identity()}, 401
 
 		parser = reqparse.RequestParser()
-		parser.add_argument("id", help="Provide API's ID", required=False, type=str)
-		parser.add_argument("groupID", help="Provide API's group ID", required=False, type=str)
-		parser.add_argument("artifactID", help="Provide API's artifact ID", required=False, type=str)
+		parser.add_argument("id", help="API's ID", required=False, type=str)
+		parser.add_argument("groupID", help="API's group ID", required=False, type=str)
+		parser.add_argument("artifactID", help="API's artifact ID", required=False, type=str)
 		args = parser.parse_args()
 		if (args["id"] is None) and ((args["artifactID"] is None) or (args["groupID"] is None)):
 			return {"message": "Didn't provide enough info to find API; either provide an ID or use a "
