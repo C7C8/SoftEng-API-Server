@@ -82,7 +82,7 @@ class APIDatabase:
 		sql = "SELECT password FROM user WHERE username=%s"
 		self.cursor.execute(sql, username)
 		res = self.cursor.fetchone()
-		if type(res) is None:
+		if res is None:
 			return False
 
 		return checkpw(password, res[0])
