@@ -4,6 +4,7 @@ from json import loads
 from flask import Flask, Blueprint
 from flask_restplus import Api, Resource, reqparse, fields
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager
+from flask_cors import CORS
 
 from apiDB import APIDatabase
 
@@ -36,6 +37,7 @@ api = Api(apiV1, version="1.0.0", title="CS 3733 API API", description="Not a ty
 																		" as part of CS 3733 Software Engineering")
 jwt._set_error_handler_callbacks(api)  # plz stop returning 500 Server Error
 ns = api.namespace("api", description="API list functionality")
+CORS(app)  # TODO Remove, this is just for debugging on one particular machine
 
 db = APIDatabase(conf["db-host"], conf["db-port"], conf["db-user"], conf["db-password"], conf["db-schema"],
 				 conf["img-dir"], conf["jar-dir"])

@@ -101,7 +101,7 @@ class APIDatabase:
 
 		# Calculate artifact ID and group ID
 		artifactID = str().join(c for c in name if c.isalnum())
-		groupID = term.lower() + str(year)[2:] + ".team" + team.upper()
+		groupID = "edu.wpi.cs3733." + term.lower() + str(year)[2:] + ".team" + team.upper()
 
 		# Escape anything HTML-y
 		name = html.escape(name)
@@ -252,7 +252,7 @@ class APIDatabase:
 			"gradle": "[group: '{}', name: '{}', version:'{}']".format(res[3], res[2], res[4]),
 			"description": res[5],
 			"image": self.__getImageName(apiID),
-			"last-update": time.mktime(res[6].timetuple()),
+			"updated": time.mktime(res[6].timetuple()),
 			"term": res[10],
 			"year": res[11],
 			"team": res[12]
@@ -349,5 +349,8 @@ class APIDatabase:
 				return False
 		if "version" in kwargs.keys():
 			if re.search("^\d+\.\d+\.\d+", kwargs["version"]) is None:
+				return False
+		if "description" in kwargs.keys(): # Anti-XSS, somehow showdown.js lets this get by in [](link) format
+			if re.search("\(.*javascript:.*\)", kwargs["description"]) is not None:
 				return False
 		return True
