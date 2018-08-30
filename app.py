@@ -104,7 +104,7 @@ apiUpdateModel = api.model("API Update", {
 })
 
 
-@ns.route("/auth/registration")
+@ns.route("/auth/register")
 class Register(Resource):
 
 	@api.expect(loginModel)
