@@ -187,6 +187,7 @@ class APIList(Resource):
 				res, apiID = db.createAPI(get_jwt_identity(), info["name"], info["contact"], info["description"], info["term"],
 																									info["year"], info["team"])
 				if res:
+					db.exportToJSON(conf["json-output"])
 					return {"message": "Created API '{}'".format(info["name"]), "id": apiID}, 201
 				else:
 					return {"message": "Failed to create API: " + apiID}, 400
