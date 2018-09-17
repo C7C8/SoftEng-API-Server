@@ -203,7 +203,7 @@ class APIList(Resource):
 			if (args["id"] is None) and ((args["artifactID"] is None) or (args["groupID"] is None)):
 				return {"message": "Didn't provide enough info to find API; either provide an ID or use a "
 												"group/artifact combination"}, 400
-			args = parser.parse_args()
+
 			apiID = args["id"] if args["id"] is not None else db.get_api_id(args["groupID"], args["artifactID"])
 			if apiID is None:
 				return {"message": "Failed to find API"}, 400
@@ -230,6 +230,7 @@ class APIList(Resource):
 		parser.add_argument("groupID", help="API group ID", required=False, type=str)
 		parser.add_argument("artifactID", help="API artifact ID", required=False, type=str)
 		args = parser.parse_args()
+
 		if (args["id"] is None) and ((args["artifactID"] is None) or (args["groupID"] is None)):
 			return {"message": "Didn't provide enough info to find API; either provide an ID or use a "
 											"group/artifact combination"}, 400
