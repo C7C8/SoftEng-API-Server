@@ -255,7 +255,8 @@ class APIDatabase:
 			"updated": time.mktime(res[6].timetuple()),
 			"term": res[10],
 			"year": res[11],
-			"team": res[12]
+			"team": res[12],
+			"creator": res[8]
 		}
 
 		# Get version history
