@@ -176,7 +176,7 @@ class APIList(Resource):
 
 		parser = reqparse.RequestParser()
 		parser.add_argument("action", help="Action (create, update)", required=True, type=str)
-		parser.add_argument("info", help="API information as a JSON object", required=True, type=dict)
+		parser.add_argument("info", help="Info structure", required=True, type=dict)
 		args = parser.parse_args()
 		action = args["action"]
 
@@ -196,9 +196,9 @@ class APIList(Resource):
 												"team) provided"}, 400
 
 		elif action == "update":
-			parser.add_argument("id", help="Provide API's ID", required=False, type=str)
-			parser.add_argument("groupID", help="Provide API's group ID", required=False, type=str)
-			parser.add_argument("artifactID", help="Provide API's artifact ID", required=False, type=str)
+			parser.add_argument("id", help="API ID", required=False, type=str)
+			parser.add_argument("groupID", help="API group ID", required=False, type=str)
+			parser.add_argument("artifactID", help="API artifact ID", required=False, type=str)
 			args = parser.parse_args()
 			if (args["id"] is None) and ((args["artifactID"] is None) or (args["groupID"] is None)):
 				return {"message": "Didn't provide enough info to find API; either provide an ID or use a "
@@ -226,9 +226,9 @@ class APIList(Resource):
 			return {"message": "User does not exist", "username": get_jwt_identity()}, 401
 
 		parser = reqparse.RequestParser()
-		parser.add_argument("id", help="API's ID", required=False, type=str)
-		parser.add_argument("groupID", help="API's group ID", required=False, type=str)
-		parser.add_argument("artifactID", help="API's artifact ID", required=False, type=str)
+		parser.add_argument("id", help="API ID", required=False, type=str)
+		parser.add_argument("groupID", help="API group ID", required=False, type=str)
+		parser.add_argument("artifactID", help="API artifact ID", required=False, type=str)
 		args = parser.parse_args()
 		if (args["id"] is None) and ((args["artifactID"] is None) or (args["groupID"] is None)):
 			return {"message": "Didn't provide enough info to find API; either provide an ID or use a "
