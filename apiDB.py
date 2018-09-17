@@ -11,7 +11,7 @@ from bcrypt import hashpw, gensalt, checkpw
 
 
 class APIDatabase:
-	def __init__(self, host, port, user, password, schema, imgdir, jardir):
+	def __init__(self, host, port, user, password, schema, img_dir, jar_dir):
 		self.connection = pymysql.connect(
 			host=host,
 			port=port,
@@ -54,16 +54,16 @@ class APIDatabase:
 		self.cursor.execute(sql)
 		self.connection.commit()
 
-		self.imgdir = imgdir
-		self.jardir = jardir
+		self.imgdir = img_dir
+		self.jardir = jar_dir
 
 	def __del__(self):
 		self.cursor.close()
 		self.connection.close()
 
-	def registerUser(self, username, password):
+	def register_user(self, username, password):
 		"""Add a user to the database, if they don't already exist."""
-		if self.checkUserExists(username):
+		if self.check_user_exists(username):
 			return False
 
 		sql = "INSERT INTO user (username, password) VALUES(%s, %s)"
@@ -71,7 +71,7 @@ class APIDatabase:
 		self.connection.commit()
 		return True
 
-	def deleteUser(self, username):
+	def delete_user(self, username):
 		"""Delete a user from the database"""
 		sql = "DELETE FROM user WHERE username=%s"
 		self.cursor.execute(sql, username)
@@ -87,13 +87,13 @@ class APIDatabase:
 
 		return checkpw(password, res[0])
 
-	def checkUserExists(self, username):
+	def check_user_exists(self, username):
 		"""Verify that a user exists; helper function for JWT authentication"""
 		sql = "SELECT * FROM user WHERE username=%s"
 		self.cursor.execute(sql, username)
 		return self.cursor.fetchone() is not None
 
-	def createAPI(self, username, name, contact, description, term, year, team):
+	def create_api(self, username, name, contact, description, term, year, team):
 		"""Create base API entry, returns API ID on success"""
 
 		if not self.__validate_args(contact=contact, term=term, year=year, team=team):
@@ -122,13 +122,13 @@ class APIDatabase:
 
 		return True, apiID
 
-	def updateAPI(self, username, apiID, **kwargs):
+	def update_api(self, username, api_id, **kwargs):
 		"""Update an API entry... anything about it. Returns whether operation succeeded, false+msg if it didn't"""
 
 		# VERIFICATION
 
 		# Verify ownership of API
-		self.cursor.execute("SELECT creator FROM api WHERE id=%s", apiID)
+		self.cursor.execute("SELECT creator FROM api WHERE id=%s", api_id)
 		res = self.cursor.fetchone()
 		if res is None or res[0] != username:
 			return False, "Couldn't verify user ownership of API"
@@ -151,7 +151,7 @@ class APIDatabase:
 			if key == "description" or key == "name" or key == "contact":
 				kwargs[key] = html.escape(kwargs[key])
 			sql = "UPDATE api SET {}=%s WHERE id=%s".format(key)
-			self.cursor.execute(sql, (kwargs[key], apiID))
+			self.cursor.execute(sql, (kwargs[key], api_id))
 
 		# Image processing: decode b64-encoded images, store them in img/directory for now, using API ID
 		mime = magic.Magic(mime=True)
@@ -159,16 +159,16 @@ class APIDatabase:
 			data = base64.standard_b64decode(kwargs["image"])
 			mtype = mime.from_buffer(data)
 			if mtype.find("image/") != -1:
-				if self.__getImageName(apiID) is not None:
-					os.remove(self.__getImageName(apiID))
-				filename = os.path.join(self.imgdir, apiID + "." + mtype[mtype.find("/") + 1:])
+				if self.__get_image_name(api_id) is not None:
+					os.remove(self.__get_image_name(api_id))
+				filename = os.path.join(self.imgdir, api_id + "." + mtype[mtype.find("/") + 1:])
 				with open(filename, "wb") as image:
 					image.write(data)
 			else:
-				print("Received image file for API " + apiID + ", but it wasn't an image!")
+				print("Received image file for API " + api_id + ", but it wasn't an image!")
 
 		# Jar processing: decode b64-encoded jar files, store them in work. Make sure that an appropriate version string
-		# is provided, otherwise we can't add it to the repo. TODO Execute script to add jar files to Maven repository
+		# is provided, otherwise we can't add it to the repo.
 		if "jar" in kwargs.keys() and "version" in kwargs.keys():
 			data = base64.standard_b64decode(kwargs["jar"])
 			if mime.from_buffer(data).find("application/zip") == -1:
@@ -177,24 +177,24 @@ class APIDatabase:
 
 			# Update version, size, timestamp
 			sql = "UPDATE api SET version=%s, size=%s, lastupdate=CURRENT_TIMESTAMP() WHERE id=%s"
-			vstring = re.search("\d+\.\d+\.\d+", kwargs["version"]).group(0) # Safe because we already validated it
-			self.cursor.execute(sql, (vstring, len(data) / 1000000, apiID))
+			vstring = re.search("\d+\.\d+\.\d+", kwargs["version"]).group(0)  # Safe because we already validated it
+			self.cursor.execute(sql, (vstring, len(data) / 1000000, api_id))
 
 			# Add version string to new entry in version table
 			sql = "INSERT INTO version(apiId, vnumber, info) VALUES (%s, %s, %s)"
 			try:
-				self.cursor.execute(sql, (apiID, vstring, html.escape(kwargs["version"].replace(vstring, "").lstrip())))
+				self.cursor.execute(sql, (api_id, vstring, html.escape(kwargs["version"].replace(vstring, "").lstrip())))
 			except pymysql.IntegrityError:
 				self.connection.rollback()
 				return False, "Failed to update API; duplicate version detected"
 
-			filename = os.path.join(self.jardir, apiID + ".jar")
+			filename = os.path.join(self.jardir, api_id + ".jar")
 			with open(filename, "wb") as jar:
 				jar.write(base64.standard_b64decode(kwargs["jar"]))
 
-			# Install jar file into maven repository! Yeah, I do it with a system() command, sue me
+			# Install jar file into maven repository! Yeah, I do it with a system() command, sue me.
 			sql = "SELECT groupID, artifactID FROM api WHERE id=%s"
-			self.cursor.execute(sql, apiID)
+			self.cursor.execute(sql, api_id)
 			res = self.cursor.fetchone()
 			os.system("mvn install:install-file -Dfile={} "
 					  "-DgroupId={} "
@@ -208,50 +208,50 @@ class APIDatabase:
 		self.connection.commit()
 		return True, "Updated API"
 
-	def deleteAPI(self, username, apiID):
+	def delete_api(self, username, api_id):
 		"""Delete an API and its associated image. Jar files are left intact since others may rely on them."""
 
 		# Verify the API actually exists and that this user owns it
-		self.cursor.execute("SELECT creator FROM api WHERE id=%s", apiID)
+		self.cursor.execute("SELECT creator FROM api WHERE id=%s", api_id)
 		res = self.cursor.fetchone()
 		if res is None or res[0] != username:
 			return False
 
-		self.cursor.execute("DELETE FROM api WHERE id=%s", apiID)
+		self.cursor.execute("DELETE FROM api WHERE id=%s", api_id)
 		self.connection.commit()
-		if self.__getImageName(apiID) is not None:
-			os.remove(self.__getImageName(apiID))
+		if self.__get_image_name(api_id) is not None:
+			os.remove(self.__get_image_name(api_id))
 		return True
 
-	def getAPIId(self, groupID, artifactID):
+	def get_api_id(self, group_id, artifact_id):
 		"""Get an API's ID, required for database operations involving APIs"""
 		sql = "SELECT id FROM api WHERE groupID=%s AND artifactID=%s"
-		self.cursor.execute(sql, (groupID, artifactID))
+		self.cursor.execute(sql, (group_id, artifact_id))
 		res = self.cursor.fetchone()
 		if res is None:
 			return None
 		return res[0]
 
-	def getAPIInfo(self, apiID):
+	def get_api_info(self, api_id):
 		"""Get an API info dict using apiID or a groupID+artifactID combination"""
 		# Get basic API info
 		sql = "SELECT name, contact, artifactID, groupID, version, description, lastupdate, id, creator, size, " \
 			"term, year, team FROM api WHERE id=%s"
-		self.cursor.execute(sql, apiID)
+		self.cursor.execute(sql, api_id)
 		res = self.cursor.fetchone()
 		if res is None:
 			return None
 
 		# Fill out base API info data structure
 		ret = {
-			"id": apiID,
+			"id": api_id,
 			"name": res[0],
 			"version": res[4],
 			"size": res[9],
 			"contact": res[1],
 			"gradle": "[group: '{}', name: '{}', version:'{}']".format(res[3], res[2], res[4]),
 			"description": res[5],
-			"image": self.__getImageName(apiID),
+			"image": self.__get_image_name(api_id),
 			"updated": time.mktime(res[6].timetuple()),
 			"term": res[10],
 			"year": res[11],
@@ -261,7 +261,7 @@ class APIDatabase:
 
 		# Get version history
 		sql = "SELECT vnumber, info FROM version WHERE apiID=%s ORDER BY vnumber DESC"
-		self.cursor.execute(sql, apiID)
+		self.cursor.execute(sql, api_id)
 		res = self.cursor.fetchall()
 		vlist = []
 		if res is not None and len(res) > 0:
@@ -271,7 +271,7 @@ class APIDatabase:
 		ret["history"] = vlist
 		return ret
 
-	def exportToJSON(self, filename):
+	def export_db_to_json(self, filename):
 		"""Export the API db to a certain format JSON file"""
 
 		# Get summed size of all up-to-date APIs in the library
@@ -311,7 +311,7 @@ class APIDatabase:
 		index = -1
 		ret["classes"] = []
 		for api in resultset:
-			apiInfo = self.getAPIInfo(apiID=api[0])
+			apiInfo = self.get_api_info(api_id=api[0])
 			if (apiInfo["term"] != currTerm) or (apiInfo["year"] != currYear):
 				currTerm = apiInfo["term"]
 				currYear = apiInfo["year"]
@@ -326,9 +326,9 @@ class APIDatabase:
 		with open(filename, "w") as out:
 			out.write(json.dumps(ret))
 
-	def __getImageName(self, apiID):
+	def __get_image_name(self, api_id):
 		for file in os.listdir(self.imgdir):
-			if file.startswith(apiID):
+			if file.startswith(api_id):
 				return os.path.join(self.imgdir, file)
 		return None
 
@@ -351,7 +351,7 @@ class APIDatabase:
 		if "version" in kwargs.keys():
 			if re.search("^\d+\.\d+\.\d+", kwargs["version"]) is None:
 				return False
-		if "description" in kwargs.keys(): # Anti-XSS, somehow showdown.js lets this get by in [](link) format
+		if "description" in kwargs.keys():  # Anti-XSS, somehow showdown.js lets this get by in [](link) format
 			if re.search("\(.*javascript:.*\)", kwargs["description"]) is not None:
 				return False
 		return True

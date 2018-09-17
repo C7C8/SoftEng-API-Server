@@ -117,7 +117,7 @@ class Register(Resource):
 		parser.add_argument("password", help="Password", required=True, type=str)
 
 		args = parser.parse_args()
-		if not db.registerUser(args["username"], args["password"]):
+		if not db.register_user(args["username"], args["password"]):
 			return {"message": "Registration failed"}, 403
 		return {"message": "Successfully registered as user {}".format(args["username"])}, 201
 
@@ -131,7 +131,7 @@ class Register(Resource):
 		parser.add_argument("password", help="Must provide password to log in with", required=True, type=str)
 		args = parser.parse_args()
 		if db.authenticate(args["username"], args["password"]):
-			db.deleteUser(args["username"])
+			db.delete_user(args["username"])
 			return {"message": "Successfully deleted user {}".format(args["username"])}, 200
 		else:
 			return {"message": "Invalid credentials"}, 401
@@ -171,7 +171,7 @@ class APIList(Resource):
 	@api.expect(apiCreateModel, apiUpdateModel)
 	def post(self):
 		"""Create or update API data"""
-		if not db.checkUserExists(get_jwt_identity()):
+		if not db.check_user_exists(get_jwt_identity()):
 			return {"message": "User does not exist", "username": get_jwt_identity()}, 401
 
 		parser = reqparse.RequestParser()
@@ -181,13 +181,13 @@ class APIList(Resource):
 		action = args["action"]
 
 		if action == "create":
-			required = ("name", "contact", "description", "term", "year", "team")
+			required = ("name", "description", "term", "year", "team")
 			if all(key in args["info"] for key in required):
 				info = args["info"]
-				res, apiID = db.createAPI(get_jwt_identity(), info["name"], info["contact"], info["description"], info["term"],
-																									info["year"], info["team"])
+				res, apiID = db.create_api(get_jwt_identity(), info["name"], info["contact"], info["description"], info["term"],
+										   info["year"], info["team"])
 				if res:
-					db.exportToJSON(conf["json-output"])
+					db.export_db_to_json(conf["json-output"])
 					return {"message": "Created API '{}'".format(info["name"]), "id": apiID}, 201
 				else:
 					return {"message": "Failed to create API: " + apiID}, 400
@@ -204,15 +204,15 @@ class APIList(Resource):
 				return {"message": "Didn't provide enough info to find API; either provide an ID or use a "
 												"group/artifact combination"}, 400
 			args = parser.parse_args()
-			apiID = args["id"] if args["id"] is not None else db.getAPIId(args["groupID"], args["artifactID"])
+			apiID = args["id"] if args["id"] is not None else db.get_api_id(args["groupID"], args["artifactID"])
 			if apiID is None:
 				return {"message": "Failed to find API"}, 400
 
 			if len(args["info"]) == 0:
 				return {"message": "Didn't include any data to update"}, 400
 
-			stat, message = db.updateAPI(get_jwt_identity(), apiID, **args["info"])
-			db.exportToJSON(conf["json-output"])
+			stat, message = db.update_api(get_jwt_identity(), apiID, **args["info"])
+			db.export_db_to_json(conf["json-output"])
 			return {"message": message, "id": apiID}, 200 if stat else 400
 
 	@jwt_required
@@ -222,7 +222,7 @@ class APIList(Resource):
 	@api.expect(apiIDModel)
 	def delete(self):
 		"""Delete an API listing and all associated metadata. Does NOT delete Jar files from the Maven repository"""
-		if not db.checkUserExists(get_jwt_identity()):
+		if not db.check_user_exists(get_jwt_identity()):
 			return {"message": "User does not exist", "username": get_jwt_identity()}, 401
 
 		parser = reqparse.RequestParser()
@@ -234,10 +234,10 @@ class APIList(Resource):
 			return {"message": "Didn't provide enough info to find API; either provide an ID or use a "
 											"group/artifact combination"}, 400
 
-		apiID = args["id"] if args["id"] is not None else db.getAPIId(args["groupID"], args["artifactID"])
+		apiID = args["id"] if args["id"] is not None else db.get_api_id(args["groupID"], args["artifactID"])
 
-		if apiID is not None and db.deleteAPI(get_jwt_identity(), apiID):
-			db.exportToJSON(conf["json-output"])
+		if apiID is not None and db.delete_api(get_jwt_identity(), apiID):
+			db.export_db_to_json(conf["json-output"])
 			return {"message": "Successfully deleted API", "id": apiID}, 200
 		else:
 			return {"message": "Failed to delete API", "id": apiID}, 400
@@ -257,10 +257,10 @@ class APIList(Resource):
 											"group/artifact combination"}, 400
 
 		# Python won't let me do C-style assignments in if statements, so yeah, there's duped code here. Deal with it.
-		apiID = args["id"] if args["id"] is not None else db.getAPIId(args["groupID"], args["artifactID"])
+		apiID = args["id"] if args["id"] is not None else db.get_api_id(args["groupID"], args["artifactID"])
 		if apiID is None:
 			return {"message": "Failed to find API", "id": args["id"]}, 400
-		res = db.getAPIInfo(apiID)
+		res = db.get_api_info(apiID)
 		if res is None:
 			return {"message": "Failed to find API", "id": args["id"]}, 400
 		return res
