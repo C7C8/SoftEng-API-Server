@@ -155,7 +155,7 @@ class Login(Resource):
 
 		args = parser.parse_args()
 		if not db.authenticate(args["username"], args["password"]):
-			return {"status": "success", "message": "Invalid credentials"}, 401
+			return {"status": "error", "message": "Invalid credentials"}, 401
 		expires = datetime.timedelta(days=20)  # TODO: Change to 1 hour
 		atoken = create_access_token(args["username"], expires_delta=expires)
 		return {
