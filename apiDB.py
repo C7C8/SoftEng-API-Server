@@ -252,7 +252,7 @@ class APIDatabase:
 			"gradle": "[group: '{}', name: '{}', version:'{}']".format(res[3], res[2], res[4]),
 			"description": res[5],
 			"image": self.__get_image_name(api_id),
-			"updated": time.mktime(res[6].timetuple()),
+			"updated": time.mktime(res[6].timetuple()) * 1000,
 			"term": res[10],
 			"year": res[11],
 			"team": res[12],
