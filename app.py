@@ -1,7 +1,10 @@
+import json
 import os
 import datetime
 from json import loads
-from flask import Flask, Blueprint
+
+import magic
+from flask import Flask, Blueprint, make_response
 from flask_restplus import Api, Resource, reqparse, fields
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager
 from flask_cors import CORS
@@ -266,8 +269,29 @@ class APIList(Resource):
 			return {"message": "Failed to find API", "id": args["id"]}, 400
 		return res
 
+# Mostly a debug route, just returns the contents of the api list
+@ns.route("/apilist")
+class APIListFile(Resource):
+	def get(self):
+		with open(conf["json-output"], "r") as apilist:
+			return json.loads(apilist.read()), 200
 
-app.register_blueprint(apiV1)
+
+# Another debug route
+@app.route("/" + conf["img-dir"] + "/<string:id>")
+def get_image(id):
+	try:
+		with open(conf["img-dir"] + "/" + id, "rb") as img:
+			data = img.read()
+			response = make_response(data)
+			mime = magic.Magic(mime=True)
+			response.headers.set('Content-Type', mime.from_buffer(data))
+			return response
+	except FileNotFoundError:
+		return "File not found", 404
+
+
 # Run Flask stuff
+app.register_blueprint(apiV1)
 if __name__ == "__main__":
 	app.run(port=conf["server-port"])
