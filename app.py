@@ -52,7 +52,8 @@ if not os.path.exists(conf["jar-dir"]):
 
 # Data models
 msgModel = api.model("Status message", {
-	'message': fields.String(description="Status")
+	'status': fields.String(description="Status"),
+	'message': fields.String(description="Message")
 })
 loginModel = api.model("Login credentials", {
 	'username': fields.String(description="Username to log in with", required=True),
@@ -121,8 +122,8 @@ class Register(Resource):
 
 		args = parser.parse_args()
 		if not db.register_user(args["username"], args["password"]):
-			return {"message": "Registration failed"}, 403
-		return {"message": "Successfully registered as user {}".format(args["username"])}, 201
+			return {"status": "error", "message": "Registration failed"}, 403
+		return {"status": "success" , "message": "Successfully registered as user {}".format(args["username"])}, 201
 
 	@api.expect(loginModel)
 	@api.response(200, "Deleted user", msgModel)
@@ -135,9 +136,9 @@ class Register(Resource):
 		args = parser.parse_args()
 		if db.authenticate(args["username"], args["password"]):
 			db.delete_user(args["username"])
-			return {"message": "Successfully deleted user {}".format(args["username"])}, 200
+			return {"status": "success", "message": "Successfully deleted user {}".format(args["username"])}, 200
 		else:
-			return {"message": "Invalid credentials"}, 401
+			return {"status": "error", "message": "Invalid credentials"}, 401
 
 
 @ns.route("/auth/login")
@@ -154,10 +155,11 @@ class Login(Resource):
 
 		args = parser.parse_args()
 		if not db.authenticate(args["username"], args["password"]):
-			return {"message": "Invalid credentials"}, 401
+			return {"status": "success", "message": "Invalid credentials"}, 401
 		expires = datetime.timedelta(days=20)  # TODO: Change to 1 hour
 		atoken = create_access_token(args["username"], expires_delta=expires)
 		return {
+				   "status": "success",
 				   "message": "Logged in as {}".format(args["username"]),
 				   "access_token": atoken,
 			   }, 200
@@ -175,7 +177,7 @@ class APIList(Resource):
 	def post(self):
 		"""Create or update API data"""
 		if not db.check_user_exists(get_jwt_identity()):
-			return {"message": "User does not exist", "username": get_jwt_identity()}, 401
+			return {"status": "error", "message": "User does not exist", "username": get_jwt_identity()}, 401
 
 		parser = reqparse.RequestParser()
 		parser.add_argument("action", help="Action (create, update)", required=True, type=str)
@@ -191,11 +193,11 @@ class APIList(Resource):
 										   info["year"], info["team"])
 				if res:
 					db.export_db_to_json(conf["json-output"])
-					return {"message": "Created API '{}'".format(info["name"]), "id": apiID}, 201
+					return {"status": "error", "message": "Created API '{}'".format(info["name"]), "id": apiID}, 201
 				else:
-					return {"message": "Failed to create API: " + apiID}, 400
+					return {"status": "error", "message": "Failed to create API: " + apiID}, 400
 			else:
-				return {"message": "Failed to create API, not enough arguments (name, contact, description, term, year, " 
+				return {"status": "error", "message": "Failed to create API, not enough arguments (name, contact, description, term, year, " 
 												"team) provided"}, 400
 
 		elif action == "update":
@@ -204,19 +206,20 @@ class APIList(Resource):
 			parser.add_argument("artifactID", help="API artifact ID", required=False, type=str)
 			args = parser.parse_args()
 			if (args["id"] is None) and ((args["artifactID"] is None) or (args["groupID"] is None)):
-				return {"message": "Didn't provide enough info to find API; either provide an ID or use a "
+				return {"status": "error", "message": "Didn't provide enough info to find API; either provide an ID or use a "
 												"group/artifact combination"}, 400
 
 			apiID = args["id"] if args["id"] is not None else db.get_api_id(args["groupID"], args["artifactID"])
 			if apiID is None:
-				return {"message": "Failed to find API"}, 400
+				return {"status": "error", "message": "Failed to find API"}, 400
 
 			if len(args["info"]) == 0:
-				return {"message": "Didn't include any data to update"}, 400
+				return {"status": "error", "message": "Didn't include any data to update"}, 400
 
 			stat, message = db.update_api(get_jwt_identity(), apiID, **args["info"])
 			db.export_db_to_json(conf["json-output"])
-			return {"message": message, "id": apiID}, 200 if stat else 400
+			return {"status": "success" if stat else "error" ,"message": message, "id": apiID}, 200 if stat else 400
+
 
 	@jwt_required
 	@api.response(200, "API deleted", apiRetMsg)
@@ -235,16 +238,16 @@ class APIList(Resource):
 		args = parser.parse_args()
 
 		if (args["id"] is None) and ((args["artifactID"] is None) or (args["groupID"] is None)):
-			return {"message": "Didn't provide enough info to find API; either provide an ID or use a "
+			return {"status": "error", "message": "Didn't provide enough info to find API; either provide an ID or use a "
 											"group/artifact combination"}, 400
 
 		apiID = args["id"] if args["id"] is not None else db.get_api_id(args["groupID"], args["artifactID"])
 
 		if apiID is not None and db.delete_api(get_jwt_identity(), apiID):
 			db.export_db_to_json(conf["json-output"])
-			return {"message": "Successfully deleted API", "id": apiID}, 200
+			return {"status": "error", "message": "Successfully deleted API", "id": apiID}, 200
 		else:
-			return {"message": "Failed to delete API", "id": apiID}, 400
+			return {"status": "error", "message": "Failed to delete API", "id": apiID}, 400
 
 	@api.expect(apiIDModel)
 	@api.response(200, "API found", apiCompleteInfoModel)
@@ -257,16 +260,16 @@ class APIList(Resource):
 		parser.add_argument("groupID", required=False, type=str)
 		args = parser.parse_args()
 		if (args["id"] is None) and ((args["artifactID"] is None) or (args["groupID"] is None)):
-			return {"message": "Didn't provide enough info to find API; either provide an ID or use a "
+			return {"status": "error", "message": "Didn't provide enough info to find API; either provide an ID or use a "
 											"group/artifact combination"}, 400
 
 		# Python won't let me do C-style assignments in if statements, so yeah, there's duped code here. Deal with it.
 		apiID = args["id"] if args["id"] is not None else db.get_api_id(args["groupID"], args["artifactID"])
 		if apiID is None:
-			return {"message": "Failed to find API", "id": args["id"]}, 400
+			return {"status": "error", "message": "Failed to find API", "id": args["id"]}, 400
 		res = db.get_api_info(apiID)
 		if res is None:
-			return {"message": "Failed to find API", "id": args["id"]}, 400
+			return {"status": "error", "message": "Failed to find API", "id": args["id"]}, 400
 		return res
 
 # Mostly a debug route, just returns the contents of the api list
