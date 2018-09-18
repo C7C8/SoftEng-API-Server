@@ -123,7 +123,7 @@ class Register(Resource):
 		args = parser.parse_args()
 		if not db.register_user(args["username"], args["password"]):
 			return {"status": "error", "message": "Registration failed"}, 403
-		return {"status": "success" , "message": "Successfully registered as user {}".format(args["username"])}, 201
+		return {"status": "success", "message": "Successfully registered as user {}".format(args["username"])}, 201
 
 	@api.expect(loginModel)
 	@api.response(200, "Deleted user", msgModel)
@@ -193,7 +193,7 @@ class APIList(Resource):
 										   info["year"], info["team"])
 				if res:
 					db.export_db_to_json(conf["json-output"])
-					return {"status": "error", "message": "Created API '{}'".format(info["name"]), "id": apiID}, 201
+					return {"status": "success", "message": "Created API '{}'".format(info["name"]), "id": apiID}, 201
 				else:
 					return {"status": "error", "message": "Failed to create API: " + apiID}, 400
 			else:
@@ -218,7 +218,7 @@ class APIList(Resource):
 
 			stat, message = db.update_api(get_jwt_identity(), apiID, **args["info"])
 			db.export_db_to_json(conf["json-output"])
-			return {"status": "success" if stat else "error" ,"message": message, "id": apiID}, 200 if stat else 400
+			return {"status": "success" if stat else "error","message": message, "id": apiID}, 200 if stat else 400
 
 
 	@jwt_required
@@ -245,7 +245,7 @@ class APIList(Resource):
 
 		if apiID is not None and db.delete_api(get_jwt_identity(), apiID):
 			db.export_db_to_json(conf["json-output"])
-			return {"status": "error", "message": "Successfully deleted API", "id": apiID}, 200
+			return {"status": "success", "message": "Successfully deleted API", "id": apiID}, 200
 		else:
 			return {"status": "error", "message": "Failed to delete API", "id": apiID}, 400
 
