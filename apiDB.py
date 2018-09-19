@@ -336,8 +336,8 @@ class APIDatabase:
 	def __validate_args(**kwargs):
 		"""Validates select API info args. Returns true if they check out, false otherwise"""
 		if "contact" in kwargs.keys():
-			# Simple email validation -- make sure there's exactly one @ and at least one . after it
-			if re.search("^[^@]+@[^@]+\.[^@]+$", kwargs["contact"]) is None:
+			# Simple email validation -- make sure there's exactly one @ with text before and after it
+			if re.search("^[^@]+@[^@]+$", kwargs["contact"]) is None:
 				return False
 		if "term" in kwargs.keys():
 			if kwargs["term"] not in ["A", "B", "C", "D"]:
