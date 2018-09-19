@@ -171,7 +171,8 @@ class APIDatabase:
 		# is provided, otherwise we can't add it to the repo.
 		if "jar" in kwargs.keys() and "version" in kwargs.keys():
 			data = base64.standard_b64decode(kwargs["jar"])
-			if mime.from_buffer(data).find("application/zip") == -1:
+			file_type = mime.from_buffer(data)
+			if file_type.find("application/zip") == -1 and file_type.find('application/java-archive') == -1:
 				self.connection.rollback()
 				return False, "Received file for API but it wasn't a jar file!"
 
