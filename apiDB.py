@@ -40,6 +40,7 @@ class APIDatabase:
 				"team        CHAR(1)       NOT NULL, " \
 				"lastupdate  TIMESTAMP     DEFAULT CURRENT_TIMESTAMP, " \
 				"creator     VARCHAR(32)   NOT NULL, " \
+				"display	 CHAR(1)	   DEFAULT 'Y', " \
 				"CONSTRAINT FOREIGN KEY creatorref(creator) REFERENCES user(username) ON UPDATE CASCADE, " \
 				"CONSTRAINT uniq_artifact UNIQUE(artifactID, groupID))"
 		self.cursor.execute(sql)
@@ -73,8 +74,8 @@ class APIDatabase:
 
 	def delete_user(self, username):
 		"""Delete a user from the database"""
-		sql = "DELETE FROM user WHERE username=%s"
-		self.cursor.execute(sql, username)
+		self.cursor.execute("DELETE FROM user WHERE username=%s", username)
+		self.cursor.execute("UPDATE api SET creator=NULL, display='N' WHERE creator=%s", username)
 		self.connection.commit()
 
 	def authenticate(self, username, password):
@@ -150,7 +151,7 @@ class APIDatabase:
 				continue
 			if key == "description" or key == "name" or key == "contact":
 				kwargs[key] = html.escape(kwargs[key])
-			sql = "UPDATE api SET {}=%s WHERE id=%s".format(key)
+			sql = "UPDATE api SET {}=%s WHERE id=%s AND display='Y'".format(key)
 			self.cursor.execute(sql, (kwargs[key], api_id))
 
 		# Image processing: decode b64-encoded images, store them in img/directory for now, using API ID
@@ -212,12 +213,12 @@ class APIDatabase:
 		"""Delete an API and its associated image. Jar files are left intact since others may rely on them."""
 
 		# Verify the API actually exists and that this user owns it
-		self.cursor.execute("SELECT creator FROM api WHERE id=%s", api_id)
+		self.cursor.execute("SELECT creator FROM api WHERE id=%s AND display='Y'", api_id)
 		res = self.cursor.fetchone()
 		if res is None or res[0] != username:
 			return False
 
-		self.cursor.execute("DELETE FROM api WHERE id=%s", api_id)
+		self.cursor.execute("UPDATE api SET display='N' WHERE id=%s", api_id)
 		self.connection.commit()
 		if self.__get_image_name(api_id) is not None:
 			os.remove(self.__get_image_name(api_id))
@@ -225,7 +226,7 @@ class APIDatabase:
 
 	def get_api_id(self, group_id, artifact_id):
 		"""Get an API's ID, required for database operations involving APIs"""
-		sql = "SELECT id FROM api WHERE groupID=%s AND artifactID=%s"
+		sql = "SELECT id FROM api WHERE groupID=%s AND artifactID=%s AND display='Y'"
 		self.cursor.execute(sql, (group_id, artifact_id))
 		res = self.cursor.fetchone()
 		if res is None:
@@ -236,7 +237,7 @@ class APIDatabase:
 		"""Get an API info dict using apiID or a groupID+artifactID combination"""
 		# Get basic API info
 		sql = "SELECT name, contact, artifactID, groupID, version, description, lastupdate, id, creator, size, " \
-			"term, year, team FROM api WHERE id=%s"
+			"term, year, team FROM api WHERE id=%s AND display='Y'"
 		self.cursor.execute(sql, api_id)
 		res = self.cursor.fetchone()
 		if res is None:
@@ -275,7 +276,7 @@ class APIDatabase:
 		"""Export the API db to a certain format JSON file"""
 
 		# Get summed size of all up-to-date APIs in the library
-		sql = "SELECT IFNULL(SUM(size), 0), COUNT(*) FROM api"
+		sql = "SELECT IFNULL(SUM(size), 0), COUNT(*) FROM api WHERE display='Y'"
 		self.cursor.execute(sql)
 		resultset = self.cursor.fetchone()
 		if resultset is None:
@@ -300,7 +301,7 @@ class APIDatabase:
 				ret["totalSize"] += os.path.getsize(f) / 1000000
 
 		# Populate base API info
-		sql = "SELECT id, term, year FROM api"
+		sql = "SELECT id, term, year FROM api WHERE display='Y'"
 		self.cursor.execute(sql)
 		resultset = self.cursor.fetchall()
 		# Sort the result set; can't be done in the DB because of conditional logic involved in term ordering
