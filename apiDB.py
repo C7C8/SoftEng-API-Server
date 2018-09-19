@@ -41,7 +41,6 @@ class APIDatabase:
 				"lastupdate  TIMESTAMP     DEFAULT CURRENT_TIMESTAMP, " \
 				"creator     VARCHAR(32)   NOT NULL, " \
 				"display	 CHAR(1)	   DEFAULT 'Y', " \
-				"CONSTRAINT FOREIGN KEY creatorref(creator) REFERENCES user(username) ON UPDATE CASCADE, " \
 				"CONSTRAINT uniq_artifact UNIQUE(artifactID, groupID))"
 		self.cursor.execute(sql)
 
@@ -74,8 +73,8 @@ class APIDatabase:
 
 	def delete_user(self, username):
 		"""Delete a user from the database"""
-		self.cursor.execute("DELETE FROM user WHERE username=%s", username)
 		self.cursor.execute("UPDATE api SET creator=NULL, display='N' WHERE creator=%s", username)
+		self.cursor.execute("DELETE FROM user WHERE username=%s", username)
 		self.connection.commit()
 
 	def authenticate(self, username, password):
