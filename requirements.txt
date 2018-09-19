@@ -14,4 +14,3 @@ python-magic==0.4.15
 pytz==2018.4
 six==1.11.0
 Werkzeug==0.14.1
-flask-cors==3.0.6

@@ -7,7 +7,6 @@ import magic
 from flask import Flask, Blueprint, make_response
 from flask_restplus import Api, Resource, reqparse, fields
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager
-from flask_cors import CORS
 
 from apiDB import APIDatabase
 
@@ -40,7 +39,6 @@ api = Api(apiV1, version="1.0.0", title="CS 3733 API API", description="Not a ty
 																		" as part of CS 3733 Software Engineering")
 jwt._set_error_handler_callbacks(api)  # plz stop returning 500 Server Error
 ns = api.namespace("api", description="API list functionality")
-CORS(app)  # TODO Remove, this is just for debugging on one particular machine
 
 db = APIDatabase(conf["db-host"], conf["db-port"], conf["db-user"], conf["db-password"], conf["db-schema"],
 				 conf["img-dir"], conf["jar-dir"])
@@ -48,7 +46,7 @@ db = APIDatabase(conf["db-host"], conf["db-port"], conf["db-user"], conf["db-pas
 if not os.path.exists(conf["img-dir"]):
 	os.makedirs(conf["img-dir"])
 if not os.path.exists(conf["jar-dir"]):
-	os.makedirs(conf["jar-dir"])  # TODO Make this invoke the Maven repo add script instead of just storing jars here
+	os.makedirs(conf["jar-dir"])
 
 # Data models
 msgModel = api.model("Status message", {
@@ -156,7 +154,7 @@ class Login(Resource):
 		args = parser.parse_args()
 		if not db.authenticate(args["username"], args["password"]):
 			return {"status": "error", "message": "Invalid credentials"}, 401
-		expires = datetime.timedelta(days=20)  # TODO: Change to 1 hour
+		expires = datetime.timedelta(hours=1)
 		atoken = create_access_token(args["username"], expires_delta=expires)
 		return {
 				   "status": "success",

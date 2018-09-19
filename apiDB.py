@@ -118,8 +118,6 @@ class APIDatabase:
 			return False, "API with that artifact+groupID already exists, try changing your API's name"
 		self.connection.commit()
 
-		# TODO Create function for updating JSON file
-
 		return True, apiID
 
 	def update_api(self, username, api_id, **kwargs):
