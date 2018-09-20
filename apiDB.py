@@ -21,38 +21,38 @@ class APIDatabase:
 		)
 		self.cursor = self.connection.cursor()
 
-		sql = "CREATE TABLE IF NOT EXISTS user (" \
-				"username    VARCHAR(32)   PRIMARY KEY, " \
-				"password    CHAR(60)      NOT NULL)"
-		self.cursor.execute(sql)
-
-		sql = "CREATE TABLE IF NOT EXISTS api (" \
-				"id CHAR(36) PRIMARY KEY, " \
-				"name        VARCHAR(64)   NOT NULL, " \
-				"contact     VARCHAR(128), " \
-				"artifactID  VARCHAR(64), " \
-				"groupID     VARCHAR(64), " \
-				"version     VARCHAR(8)    NOT NULL, " \
-				"size        INT, " \
-				"description TEXT, " \
-				"term        CHAR(1)       NOT NULL, " \
-				"year        INT           NOT NULL, " \
-				"team        CHAR(1)       NOT NULL, " \
-				"lastupdate  TIMESTAMP     DEFAULT CURRENT_TIMESTAMP, " \
-				"creator     VARCHAR(32)   NOT NULL, " \
-				"display	 CHAR(1)	   DEFAULT 'Y', " \
-				"CONSTRAINT uniq_artifact UNIQUE(artifactID, groupID))"
-		self.cursor.execute(sql)
-
-		sql = "CREATE TABLE IF NOT EXISTS version (" \
-				"apiId       CHAR(36)      NOT NULL, " \
-				"vnumber     VARCHAR(16)   NOT NULL, " \
-				"info        TEXT, " \
-				"CONSTRAINT FOREIGN KEY idref(apiId) REFERENCES api(id) ON DELETE CASCADE, " \
-				"CONSTRAINT uniq_version UNIQUE(apiId, vnumber));"
-
-		self.cursor.execute(sql)
-		self.connection.commit()
+#		sql = "CREATE TABLE IF NOT EXISTS user (" \
+#				"username    VARCHAR(32)   PRIMARY KEY, " \
+#				"password    CHAR(60)      NOT NULL)"
+#		self.cursor.execute(sql)
+#
+#		sql = "CREATE TABLE IF NOT EXISTS api (" \
+#				"id CHAR(36) PRIMARY KEY, " \
+#				"name        VARCHAR(64)   NOT NULL, " \
+#				"contact     VARCHAR(128), " \
+#				"artifactID  VARCHAR(64), " \
+#				"groupID     VARCHAR(64), " \
+#				"version     VARCHAR(8)    NOT NULL, " \
+#				"size        INT, " \
+#				"description TEXT, " \
+#				"term        CHAR(1)       NOT NULL, " \
+#				"year        INT           NOT NULL, " \
+#				"team        CHAR(1)       NOT NULL, " \
+#				"lastupdate  TIMESTAMP     DEFAULT CURRENT_TIMESTAMP, " \
+#				"creator     VARCHAR(32)   NOT NULL, " \
+#				"display	 CHAR(1)	   DEFAULT 'Y', " \
+#				"CONSTRAINT uniq_artifact UNIQUE(artifactID, groupID))"
+#		self.cursor.execute(sql)
+#
+#		sql = "CREATE TABLE IF NOT EXISTS version (" \
+#				"apiId       CHAR(36)      NOT NULL, " \
+#				"vnumber     VARCHAR(16)   NOT NULL, " \
+#				"info        TEXT, " \
+#				"CONSTRAINT FOREIGN KEY idref(apiId) REFERENCES api(id) ON DELETE CASCADE, " \
+#				"CONSTRAINT uniq_version UNIQUE(apiId, vnumber));"
+#
+#		self.cursor.execute(sql)
+#		self.connection.commit()
 
 		self.imgdir = img_dir
 		self.jardir = jar_dir
@@ -328,7 +328,7 @@ class APIDatabase:
 	def __get_image_name(self, api_id):
 		for file in os.listdir(self.imgdir):
 			if file.startswith(api_id):
-				return os.path.join(self.imgdir, file)
+				return os.path.join(os.path.basename(self.imgdir), file)
 		return None
 
 	@staticmethod
