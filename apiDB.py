@@ -158,7 +158,7 @@ class APIDatabase:
 			mtype = mime.from_buffer(data)
 			if mtype.find("image/") != -1:
 				if self.__get_image_name(api_id) is not None:
-					os.remove(self.__get_image_name(api_id))
+					os.remove(self.__get_image_file_loc(api_id))
 				filename = os.path.join(self.imgdir, api_id + "." + mtype[mtype.find("/") + 1:])
 				with open(filename, "wb") as image:
 					image.write(data)
@@ -219,7 +219,7 @@ class APIDatabase:
 		self.cursor.execute("UPDATE api SET display='N' WHERE id=%s", api_id)
 		self.connection.commit()
 		if self.__get_image_name(api_id) is not None:
-			os.remove(self.__get_image_name(api_id))
+			os.remove(self.__get_image_file_loc(api_id))
 		return True
 
 	def get_api_id(self, group_id, artifact_id):
@@ -329,6 +329,12 @@ class APIDatabase:
 		for file in os.listdir(self.imgdir):
 			if file.startswith(api_id):
 				return os.path.join(os.path.basename(self.imgdir), file)
+		return None
+
+	def __get_image_file_loc(self, api_id):
+		for file in os.listdir(self.imgdir):
+			if file.startswith(api_id):
+				return os.path.join(self.imgdir, file)
 		return None
 
 	@staticmethod
