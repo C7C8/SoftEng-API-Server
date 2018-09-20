@@ -182,7 +182,7 @@ class APIDatabase:
 			# Add version string to new entry in version table
 			sql = "INSERT INTO version(apiId, vnumber, info) VALUES (%s, %s, %s)"
 			try:
-				self.cursor.execute(sql, (api_id, vstring, html.escape(kwargs["version"].replace(vstring, "").lstrip())))
+				self.cursor.execute(sql, (api_id, vstring, kwargs["version"].replace(vstring, "").lstrip()))
 			except pymysql.IntegrityError:
 				self.connection.rollback()
 				return False, "Failed to update API; duplicate version detected"
