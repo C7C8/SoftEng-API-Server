@@ -197,14 +197,14 @@ class APIDatabase:
 				sql = "SELECT groupID, artifactID FROM api WHERE id=%s"
 				cursor.execute(sql, api_id)
 				res = cursor.fetchone()
-			os.system("mvn install:install-file -Dfile={} "
+				os.system("mvn install:install-file -Dfile={} "
 					  "-DgroupId={} "
 					  "-DartifactId={} "
 					  "-Dversion={} "
 					  "-Dpackaging=jar "
 					  "-DlocalRepositoryPath={}"
 					  .format(filename, res[0], res[1], vstring, self.jardir))
-			os.remove(filename)
+				os.remove(filename)
 
 		self.connection.commit()
 		return True, "Updated API"
