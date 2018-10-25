@@ -1,13 +1,12 @@
-import os
 import datetime
+import os
 from json import loads
 
-from flask import Flask, Blueprint, make_response
-from flask_restplus import Api, Resource, reqparse, fields
+from flask import Flask, Blueprint
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager
+from flask_restplus import Api, Resource, reqparse
 
 from apiDB import APIDatabase
-
 
 # Load configuration
 conf = {
@@ -46,6 +45,7 @@ if not os.path.exists(conf["img-dir"]):
 if not os.path.exists(conf["jar-dir"]):
 	os.makedirs(conf["jar-dir"])
 
+
 # API endpoints
 
 @ns.route("/auth/register")
@@ -83,13 +83,15 @@ class Login(Resource):
 		parser.add_argument("password", help="Password", required=True, type=str)
 
 		args = parser.parse_args()
-		if not db.authenticate(args["username"], args["password"]):
+		authenticated, admin = db.authenticate(args["username"], args["password"])
+		if not authenticated:
 			return {"status": "error", "message": "Invalid credentials"}, 401
 		expires = datetime.timedelta(hours=1)
 		atoken = create_access_token(args["username"], expires_delta=expires)
 		return {
 				   "status": "success",
 				   "message": "Logged in as {}".format(args["username"]),
+				   "admin": admin,
 				   "access_token": atoken,
 			   }, 200
 

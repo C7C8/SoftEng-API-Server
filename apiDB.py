@@ -36,15 +36,26 @@ class APIDatabase:
 			cursor.connection.commit()
 
 	def authenticate(self, username, password):
-		"""Authenticate username/password combo, just returns true/false"""
+		"""Authenticate username/password combo, returns tuple of booleans (one for auth, second for admin rights"""
 		with self.connect() as cursor:
-			sql = "SELECT password FROM user WHERE username=%s"
-			cursor.execute(sql, username)
+			cursor.execute("SELECT password, admin FROM user WHERE username=%s", username)
 			res = cursor.fetchone()
 			if res is None:
-				return False
+				return False, False
 
-		return checkpw(password, res[0])
+		return checkpw(password, res[0]), res[1] > 0
+
+	def is_admin(self, username):
+		with self.connect() as cursor:
+			try:
+				cursor.execute("SELECT admin FROM user WHERE username=%s", username)
+				res = cursor.fetchone()
+				if res is None:
+					return False
+
+				return res[0] > 0
+			except:
+				return False
 
 	def check_user_exists(self, username):
 		"""Verify that a user exists; helper function for JWT authentication"""
@@ -85,11 +96,12 @@ class APIDatabase:
 
 		with self.connect() as cursor:
 			# VERIFICATION
-			# Verify ownership of API
-			cursor.execute("SELECT creator FROM api WHERE id=%s", api_id)
-			res = cursor.fetchone()
-			if res is None or res[0] != username:
-				return False, "Couldn't verify user ownership of API"
+			# Verify ownership of API (but skip if user is admin)
+			if not self.is_admin(username):
+				cursor.execute("SELECT creator FROM api WHERE id=%s", api_id)
+				res = cursor.fetchone()
+				if res is None or res[0] != username:
+					return False, "Couldn't verify user ownership of API"
 
 			# Since these values are basically passed in RAW into the db, it's critical to allow only select keywords
 			allowed = ("name", "version", "contact", "term", "year", "team", "description", "image", "jar")
@@ -147,7 +159,7 @@ class APIDatabase:
 					cursor.connection.rollback()
 					return False, "Failed to update API; duplicate version detected"
 
-				filename = os.path.join(self.jardir, api_id + ".jar")
+				filename = os.path.join(self.jar_dir, api_id + ".jar")
 				with open(filename, "wb") as jar:
 					jar.write(base64.standard_b64decode(kwargs["jar"]))
 
@@ -161,10 +173,10 @@ class APIDatabase:
 					  "-Dversion={} "
 					  "-Dpackaging=jar "
 					  "-DlocalRepositoryPath={}"
-					  .format(filename, res[0], res[1], vstring, self.jardir))
+					  .format(filename, res[0], res[1], vstring, self.jar_dir))
 				os.remove(filename)
 
-		cursor.connection.commit()
+			cursor.connection.commit()
 		return True, "Updated API"
 
 	def delete_api(self, username, api_id):
@@ -172,9 +184,10 @@ class APIDatabase:
 
 		with self.connect() as cursor:
 			# Verify the API actually exists and that this user owns it
+			# (unless they're admin, in which case they can do whatever)
 			cursor.execute("SELECT creator FROM api WHERE id=%s AND display='Y'", api_id)
 			res = cursor.fetchone()
-			if res is None or res[0] != username:
+			if res is None or (res[0] != username and not self.is_admin(username)):
 				return False
 
 			cursor.execute("UPDATE api SET display='N' WHERE id=%s", api_id)
