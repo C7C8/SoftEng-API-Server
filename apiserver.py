@@ -46,70 +46,10 @@ if not os.path.exists(conf["img-dir"]):
 if not os.path.exists(conf["jar-dir"]):
 	os.makedirs(conf["jar-dir"])
 
-# Data models
-msgModel = api.model("Status message", {
-	'status': fields.String(description="Status"),
-	'message': fields.String(description="Message")
-})
-loginModel = api.model("Login credentials", {
-	'username': fields.String(description="Username to log in with", required=True),
-	'password': fields.String(description="Password to log in with", required=True)
-})
-tokenModel = api.inherit("Access token response", msgModel, {
-	'access_token': fields.String(description="JWT access token, use with header 'Authorization: Bearer XXXXX'")
-})
-apiIDModel = api.model("API Identification", {
-	"id": fields.String(description="UUID of API", required=False, example="9cdd30a7-9876-47e1-921c-c7471e6b7c3d"),
-	"groupID": fields.String(description="Group ID of API, provided with artifact ID in lieu of UUID", required=False,
-							 example="d18.teamD"),
-	"artifactID": fields.String(description="Artifact ID of API, provided with group ID in lieu of UUID",
-								required=False, example="APIUpdateChecker")
-})
-apiRetMsg = api.inherit("API Status Return", msgModel, {
-	"id": fields.String(description="UUID of API")
-})
-apiBasicInfo = api.model("API Basic Info", {
-	"name": fields.String(description="Name of API. Will be converted to an artifact ID", example="API Update Checker"),
-	"contact": fields.String(description="Email address of API maintainer", example="email@wpi.edu",
-							 pattern="[^@]+@[^@]+\.[^@]+"),
-	"description": fields.String(description="Prose description of API. Markdown support coming soon"),
-	"term": fields.String(description="Term API was created in", enum=['A', 'B', 'C', 'D']),
-	"year": fields.Integer(description="Year of API creation", example=2018),
-	"team": fields.String(description="Team that created the API", pattern="[A-Z]")
-})
-apiCompleteInfoModel = api.inherit("API Complete Info", apiBasicInfo, {
-	"id": fields.String(description="UUID of API", example="9cdd30a7-9876-47e1-921c-c7471e6b7c3d"),
-	"version": fields.String(description="Current version number of API", example="1.0.0", pattern="\d+\.\d+\.\d+"),
-	"size": fields.Integer(description="Size of API in MB", example=31),
-	"gradle": fields.String(description="Gradle dependency string",
-							example="[group: 'd18.teamA', name: 'APIUpdateChecker', version:'1.0.0']"),
-	"image": fields.String(description="URL to screenshot of API"),
-	"last-update": fields.Integer(description="Unix timestamp for when the API was last updated",
-								  example=892080000),
-	"history": fields.List(fields.String(description="Version history entry", example="1.0.0 Initial release"))
-})
-apiCreateModel = api.model("API Creation", {
-	"action": fields.String(description="Create", enum=["create"], required=True),
-	"info": fields.Nested(apiBasicInfo, required=True)
-})
-apiUpdateInfo = api.inherit("API Update Info", apiBasicInfo, {
-	"version": fields.String(description="Version string, must start with version number (see regex), must be"
-										 "accompanies by a jar file, number must not be duplicate", pattern="\d+\.d\+\.\d+"),
-	"image": fields.String(description="Base64-encoded image file. MIME-type must start with image/"),
-	"jar": fields.String(description="Base64-encoded Jar file. MIME-type must be application/zip")
-})
-apiUpdateModel = api.model("API Update", {
-	"action": fields.String(description="Update", enum=["create"], required=True),
-	"info": fields.Nested(apiUpdateInfo)
-})
-
+# API endpoints
 
 @ns.route("/auth/register")
 class Register(Resource):
-
-	@api.expect(loginModel)
-	@api.response(201, "Registered new user", msgModel)
-	@api.response(403, "Registration failed", msgModel)
 	def post(self):
 		"""Register new user"""
 		parser = reqparse.RequestParser()
@@ -121,9 +61,6 @@ class Register(Resource):
 			return {"status": "error", "message": "Registration failed"}, 403
 		return {"status": "success", "message": "Successfully registered as user {}".format(args["username"])}, 201
 
-	@api.expect(loginModel)
-	@api.response(200, "Deleted user", msgModel)
-	@api.response(401, "Invalid credentials")
 	def delete(self):
 		"""Delete user, requires password as confirmation"""
 		parser = reqparse.RequestParser()
@@ -139,10 +76,6 @@ class Register(Resource):
 
 @ns.route("/auth/login")
 class Login(Resource):
-
-	@api.expect(loginModel)
-	@api.response(200, "Logged in", tokenModel)
-	@api.response(401, "Invalid credentials", msgModel)
 	def post(self):
 		"""Login, return a token"""
 		parser = reqparse.RequestParser()
@@ -163,13 +96,7 @@ class Login(Resource):
 
 @ns.route("/list")
 class APIList(Resource):
-
 	@jwt_required
-	@api.response(201, "API Created", apiRetMsg)
-	@api.response(401, "User does not exist")
-	@api.response(400, "Failed to create API", apiRetMsg)
-	@api.response(400, "Failed to update API", apiRetMsg)
-	@api.expect(apiCreateModel, apiUpdateModel)
 	def post(self):
 		"""Create or update API data"""
 		if not db.check_user_exists(get_jwt_identity()):
@@ -216,12 +143,7 @@ class APIList(Resource):
 			db.export_db_to_json(conf["json-output"])
 			return {"status": "success" if stat else "error","message": message, "id": apiID}, 200 if stat else 400
 
-
 	@jwt_required
-	@api.response(200, "API deleted", apiRetMsg)
-	@api.response(400, "Failed to delete API")
-	@api.response(401, "User does not exist")
-	@api.expect(apiIDModel)
 	def delete(self):
 		"""Delete an API listing and all associated metadata. Does NOT delete Jar files from the Maven repository"""
 		if not db.check_user_exists(get_jwt_identity()):
@@ -245,9 +167,6 @@ class APIList(Resource):
 		else:
 			return {"status": "error", "message": "Failed to delete API", "id": apiID}, 400
 
-	@api.expect(apiIDModel)
-	@api.response(200, "API found", apiCompleteInfoModel)
-	@api.response(400, "Failed to find API", msgModel)
 	def get(self):
 		"""Get information on an API, using its ID or its artifact+groupID"""
 		parser = reqparse.RequestParser()
