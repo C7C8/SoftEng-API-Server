@@ -1,9 +1,7 @@
-import json
 import os
 import datetime
 from json import loads
 
-import magic
 from flask import Flask, Blueprint, make_response
 from flask_restplus import Api, Resource, reqparse, fields
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager

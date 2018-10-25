@@ -11,75 +11,33 @@ from bcrypt import hashpw, gensalt, checkpw
 
 
 class APIDatabase:
-	def __init__(self, host, port, user, password, schema, img_dir, jar_dir):
-		self.connection = pymysql.connect(
-			host=host,
-			port=port,
-			user=user,
-			password=password,
-			database=schema
-		)
+	def __init__(self, host, port, user, password, database, img_dir, jar_dir):
+		self.__dict__.update({k: v for k, v in locals().items() if k != 'self'})
 
-#		sql = "CREATE TABLE IF NOT EXISTS user (" \
-#				"username    VARCHAR(32)   PRIMARY KEY, " \
-#				"password    CHAR(60)      NOT NULL)"
-#		self.cursor.execute(sql)
-#
-#		sql = "CREATE TABLE IF NOT EXISTS api (" \
-#				"id CHAR(36) PRIMARY KEY, " \
-#				"name        VARCHAR(64)   NOT NULL, " \
-#				"contact     VARCHAR(128), " \
-#				"artifactID  VARCHAR(64), " \
-#				"groupID     VARCHAR(64), " \
-#				"version     VARCHAR(8)    NOT NULL, " \
-#				"size        INT, " \
-#				"description TEXT, " \
-#				"term        CHAR(1)       NOT NULL, " \
-#				"year        INT           NOT NULL, " \
-#				"team        CHAR(1)       NOT NULL, " \
-#				"lastupdate  TIMESTAMP     DEFAULT CURRENT_TIMESTAMP, " \
-#				"creator     VARCHAR(32)   NOT NULL, " \
-#				"display	 CHAR(1)	   DEFAULT 'Y', " \
-#				"CONSTRAINT uniq_artifact UNIQUE(artifactID, groupID))"
-#		self.cursor.execute(sql)
-#
-#		sql = "CREATE TABLE IF NOT EXISTS version (" \
-#				"apiId       CHAR(36)      NOT NULL, " \
-#				"vnumber     VARCHAR(16)   NOT NULL, " \
-#				"info        TEXT, " \
-#				"CONSTRAINT FOREIGN KEY idref(apiId) REFERENCES api(id) ON DELETE CASCADE, " \
-#				"CONSTRAINT uniq_version UNIQUE(apiId, vnumber));"
-#
-#		self.cursor.execute(sql)
-#		self.connection.commit()
-
-		self.imgdir = img_dir
-		self.jardir = jar_dir
-
-	def __del__(self):
-		self.connection.close()
+	def connect(self):
+		return pymysql.connect(**{k: v for k, v in self.__dict__.items() if k != 'img_dir' and k != 'jar_dir'}).cursor()
 
 	def register_user(self, username, password):
 		"""Add a user to the database, if they don't already exist."""
-		with self.connection.cursor() as cursor:
+		with self.connect() as cursor:
 			if self.check_user_exists(username):
 				return False
 
 			sql = "INSERT INTO user (username, password) VALUES(%s, %s)"
 			cursor.execute(sql, (username, hashpw(password, gensalt())))
-			self.connection.commit()
+			cursor.connection.commit()
 			return True
 
 	def delete_user(self, username):
 		"""Delete a user from the database"""
-		with self.connection.cursor() as cursor:
+		with self.connect() as cursor:
 			cursor.execute("UPDATE api SET creator=NULL, display='N' WHERE creator=%s", username)
 			cursor.execute("DELETE FROM user WHERE username=%s", username)
-			self.connection.commit()
+			cursor.connection.commit()
 
 	def authenticate(self, username, password):
 		"""Authenticate username/password combo, just returns true/false"""
-		with self.connection.cursor() as cursor:
+		with self.connect() as cursor:
 			sql = "SELECT password FROM user WHERE username=%s"
 			cursor.execute(sql, username)
 			res = cursor.fetchone()
@@ -90,14 +48,14 @@ class APIDatabase:
 
 	def check_user_exists(self, username):
 		"""Verify that a user exists; helper function for JWT authentication"""
-		with self.connection.cursor() as cursor:
+		with self.connect() as cursor:
 			sql = "SELECT * FROM user WHERE username=%s"
 			cursor.execute(sql, username)
 			return cursor.fetchone() is not None
 
 	def create_api(self, username, name, contact, description, term, year, team):
 		"""Create base API entry, returns API ID on success"""
-		with self.connection.cursor() as cursor:
+		with self.connect() as cursor:
 			if not self.__validate_args(contact=contact, term=term, year=year, team=team):
 				return False, "Bad arguments"
 
@@ -118,14 +76,14 @@ class APIDatabase:
 				cursor.execute(sql, (apiID, name, contact, description, username, artifactID, groupID, term, year, team))
 			except pymysql.IntegrityError:
 				return False, "API with that artifact+groupID already exists, try changing your API's name"
-			self.connection.commit()
+			cursor.connection.commit()
 
 			return True, apiID
 
 	def update_api(self, username, api_id, **kwargs):
 		"""Update an API entry... anything about it. Returns whether operation succeeded, false+msg if it didn't"""
 
-		with self.connection.cursor() as cursor:
+		with self.connect() as cursor:
 			# VERIFICATION
 			# Verify ownership of API
 			cursor.execute("SELECT creator FROM api WHERE id=%s", api_id)
@@ -161,7 +119,7 @@ class APIDatabase:
 				if mtype.find("image/") != -1:
 					if self.__get_image_name(api_id) is not None:
 						os.remove(self.__get_image_file_loc(api_id))
-					filename = os.path.join(self.imgdir, api_id + "." + mtype[mtype.find("/") + 1:])
+					filename = os.path.join(self.img_dir, api_id + "." + mtype[mtype.find("/") + 1:])
 					with open(filename, "wb") as image:
 						image.write(data)
 				else:
@@ -173,7 +131,7 @@ class APIDatabase:
 				data = base64.standard_b64decode(kwargs["jar"])
 				file_type = mime.from_buffer(data)
 				if file_type.find("application/zip") == -1 and file_type.find('application/java-archive') == -1:
-					self.connection.rollback()
+					cursor.connection.rollback()
 					return False, "Received file for API but it wasn't a jar file!"
 
 				# Update version, size, timestamp
@@ -186,7 +144,7 @@ class APIDatabase:
 				try:
 					cursor.execute(sql, (api_id, vstring, kwargs["version"].replace(vstring, "").lstrip()))
 				except pymysql.IntegrityError:
-					self.connection.rollback()
+					cursor.connection.rollback()
 					return False, "Failed to update API; duplicate version detected"
 
 				filename = os.path.join(self.jardir, api_id + ".jar")
@@ -206,13 +164,13 @@ class APIDatabase:
 					  .format(filename, res[0], res[1], vstring, self.jardir))
 				os.remove(filename)
 
-		self.connection.commit()
+		cursor.connection.commit()
 		return True, "Updated API"
 
 	def delete_api(self, username, api_id):
 		"""Delete an API and its associated image. Jar files are left intact since others may rely on them."""
 
-		with self.connection.cursor() as cursor:
+		with self.connect() as cursor:
 			# Verify the API actually exists and that this user owns it
 			cursor.execute("SELECT creator FROM api WHERE id=%s AND display='Y'", api_id)
 			res = cursor.fetchone()
@@ -220,14 +178,14 @@ class APIDatabase:
 				return False
 
 			cursor.execute("UPDATE api SET display='N' WHERE id=%s", api_id)
-			self.connection.commit()
+			cursor.connection.commit()
 			if self.__get_image_name(api_id) is not None:
 				os.remove(self.__get_image_file_loc(api_id))
 			return True
 
 	def get_api_id(self, group_id, artifact_id):
 		"""Get an API's ID, required for database operations involving APIs"""
-		with self.connection.cursor() as cursor:
+		with self.connect() as cursor:
 			sql = "SELECT id FROM api WHERE groupID=%s AND artifactID=%s AND display='Y'"
 			cursor.execute(sql, (group_id, artifact_id))
 			res = cursor.fetchone()
@@ -238,7 +196,7 @@ class APIDatabase:
 	def get_api_info(self, api_id):
 		"""Get an API info dict using apiID or a groupID+artifactID combination"""
 		# Get basic API info
-		with self.connection.cursor() as cursor:
+		with self.connect() as cursor:
 			sql = "SELECT name, contact, artifactID, groupID, version, description, lastupdate, id, creator, size, " \
 				"term, year, team FROM api WHERE id=%s AND display='Y'"
 			cursor.execute(sql, api_id)
@@ -277,7 +235,7 @@ class APIDatabase:
 
 	def export_db_to_json(self, filename):
 		"""Export the API db to a certain format JSON file"""
-		with self.connection.cursor() as cursor:
+		with self.connect() as cursor:
 			# Get summed size of all up-to-date APIs in the library
 			sql = "SELECT IFNULL(SUM(size), 0), COUNT(*) FROM api WHERE display='Y'"
 			cursor.execute(sql)
@@ -295,7 +253,7 @@ class APIDatabase:
 			}
 
 			# Get count+size of ALL currently stored jar files
-			for path, names, files in os.walk(self.jardir):
+			for path, names, files in os.walk(self.jar_dir):
 				for file in files:
 					if not file.endswith(".jar"):
 						continue
@@ -331,15 +289,15 @@ class APIDatabase:
 				out.write(json.dumps(ret))
 
 	def __get_image_name(self, api_id):
-		for file in os.listdir(self.imgdir):
+		for file in os.listdir(self.img_dir):
 			if file.startswith(api_id):
-				return os.path.join(os.path.basename(self.imgdir), file)
+				return os.path.join(os.path.basename(self.img_dir), file)
 		return None
 
 	def __get_image_file_loc(self, api_id):
-		for file in os.listdir(self.imgdir):
+		for file in os.listdir(self.img_dir):
 			if file.startswith(api_id):
-				return os.path.join(self.imgdir, file)
+				return os.path.join(self.img_dir, file)
 		return None
 
 	@staticmethod
