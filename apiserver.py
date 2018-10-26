@@ -53,8 +53,8 @@ class Register(Resource):
 	def post(self):
 		"""Register new user"""
 		parser = reqparse.RequestParser()
-		parser.add_argument("username", help="Username", required=True, type=str)
-		parser.add_argument("password", help="Password", required=True, type=str)
+		parser.add_argument("username", required=True, type=str)
+		parser.add_argument("password", required=True, type=str)
 
 		args = parser.parse_args()
 		if not db.register_user(args["username"], args["password"]):
@@ -64,8 +64,8 @@ class Register(Resource):
 	def delete(self):
 		"""Delete user, requires password as confirmation"""
 		parser = reqparse.RequestParser()
-		parser.add_argument("username", help="Must provide username to log in with", required=True, type=str)
-		parser.add_argument("password", help="Must provide password to log in with", required=True, type=str)
+		parser.add_argument("username", required=True, type=str)
+		parser.add_argument("password", required=True, type=str)
 		args = parser.parse_args()
 		if db.authenticate(args["username"], args["password"]):
 			db.delete_user(args["username"])
@@ -79,8 +79,8 @@ class Login(Resource):
 	def post(self):
 		"""Login, return a token"""
 		parser = reqparse.RequestParser()
-		parser.add_argument("username", help="Username", required=True, type=str)
-		parser.add_argument("password", help="Password", required=True, type=str)
+		parser.add_argument("username", required=True, type=str)
+		parser.add_argument("password", required=True, type=str)
 
 		args = parser.parse_args()
 		authenticated, admin = db.authenticate(args["username"], args["password"])
