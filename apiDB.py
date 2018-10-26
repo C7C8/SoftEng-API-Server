@@ -5,6 +5,8 @@ import uuid
 import time
 import json
 import base64
+from distutils.version import StrictVersion
+
 import magic
 import pymysql
 from bcrypt import hashpw, gensalt, checkpw
@@ -235,12 +237,12 @@ class APIDatabase:
 			}
 
 			# Get version history
-			sql = "SELECT vnumber, info FROM version WHERE apiID=%s ORDER BY vnumber DESC"
+			sql = "SELECT vnumber, info FROM version WHERE apiID=%s"
 			cursor.execute(sql, api_id)
 			res = cursor.fetchall()
 			vlist = []
 			if res is not None and len(res) > 0:
-				for version in res:
+				for version in sorted(res, key=lambda x: StrictVersion(x[0])):
 					vlist.append(version[0] + ": " + version[1])
 
 			ret["history"] = vlist
