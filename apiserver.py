@@ -47,6 +47,24 @@ if not os.path.exists(conf["jar-dir"]):
 	os.makedirs(conf["jar-dir"])
 
 
+def response(success, message, descriptor=None, payload=None):
+	"""Helper to generate standard format API responses"""
+	if descriptor is None:
+		return {"status": "success" if success else "error", "message": message}
+	else:
+		return {"status": "success" if success else "error", "message": message, descriptor: payload}
+
+
+# Helper wrapper to make admin privilege checking smoother
+def admin_required(func):
+	def wrapper(self):
+		print("Checking admin privileges on " + get_jwt_identity())
+		if not db.is_admin(get_jwt_identity()):
+			return response(False, "Admin access not authorized"), 403
+		return func(self)
+	return wrapper
+
+
 # API endpoints
 
 @ns.route("/auth/register")
@@ -192,24 +210,22 @@ class Admin(Resource):
 	"""Endpoints for the admin access feature"""
 
 	@jwt_required
+	@admin_required
 	def get(self):
 		"""Get list of users"""
-		if not db.is_admin(get_jwt_identity()):
-			return response(False, "Not authorized to access users list"), 403
 		users = [{"username": user[0], "admin": user[1] != 0} for user in db.get_user_list()]
 		return response(True, "Retrieved {} users".format(len(users)), "users", users), 200
 
 	@jwt_required
+	@admin_required
 	def post(self):
 		"""Modify user"""
 		pass
 
 	@jwt_required
+	@admin_required
 	def delete(self):
 		"""Delete a user"""
-		if not db.is_admin(get_jwt_identity()):
-			return response(False, "Not authorized to remove other users"), 403
-
 		parser = reqparse.RequestParser()
 		parser.add_argument("username", required=True, type=str)
 		username = parser.parse_args()["username"]
@@ -217,14 +233,6 @@ class Admin(Resource):
 			return response(False, "User does not exist"), 400
 		db.delete_user(username)
 		return response(True, "User deleted"), 200
-
-
-def response(success, message, descriptor=None, payload=None):
-	"""Helper to generate standard format API responses"""
-	if descriptor is None:
-		return {"status": "success" if success else "error", "message": message}
-	else:
-		return {"status": "success" if success else "error", "message": message, descriptor: payload}
 
 
 # Run Flask development server
