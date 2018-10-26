@@ -34,6 +34,7 @@ jwt = JWTManager(app)
 apiV1 = Blueprint('api', __name__)
 api = Api(apiV1, version="1.0.0", title="CS 3733 API API", description="Not a typo; serves up info on Java APIs created"
 																		" as part of CS 3733 Software Engineering")
+app.register_blueprint(apiV1)
 jwt._set_error_handler_callbacks(api)  # plz stop returning 500 Server Error
 ns = api.namespace("api", description="API list functionality")
 
@@ -97,7 +98,7 @@ class Login(Resource):
 
 
 @ns.route("/list")
-class APIList(Resource):
+class List(Resource):
 	@jwt_required
 	def post(self):
 		"""Create or update API data"""
@@ -186,6 +187,38 @@ class APIList(Resource):
 		return res
 
 
+@ns.route("/admin")
+class Admin(Resource):
+	"""Endpoints for the admin access feature"""
+
+	@jwt_required
+	def get(self):
+		"""Get list of users"""
+		if not db.is_admin(get_jwt_identity()):
+			return response(False, "Not authorized to access users list"), 403
+		users = [{"username": user[0], "admin": user[1] != 0} for user in db.get_user_list()]
+		return response(True, "Retrieved {} users".format(len(users)), "users", users), 200
+
+	@jwt_required
+	def post(self):
+		"""Modify user"""
+		pass
+
+	@jwt_required
+	def delete(self):
+		"""Delete a user"""
+		if not db.is_admin(get_jwt_identity()):
+			return response(False, "Not authorized to remove other users"), 403
+
+		parser = reqparse.RequestParser()
+		parser.add_argument("username", required=True, type=str)
+		username = parser.parse_args()["username"]
+		if not db.check_user_exists(username):
+			return response(False, "User does not exist"), 400
+		db.delete_user(username)
+		return response(True, "User deleted"), 200
+
+
 def response(success, message, descriptor=None, payload=None):
 	"""Helper to generate standard format API responses"""
 	if descriptor is None:
@@ -194,7 +227,6 @@ def response(success, message, descriptor=None, payload=None):
 		return {"status": "success" if success else "error", "message": message, descriptor: payload}
 
 
-# Run Flask stuff
-app.register_blueprint(apiV1)
+# Run Flask development server
 if __name__ == "__main__":
 	app.run(port=conf["server-port"])

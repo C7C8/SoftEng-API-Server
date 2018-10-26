@@ -248,6 +248,13 @@ class APIDatabase:
 			ret["history"] = vlist
 			return ret
 
+	def get_user_list(self):
+		"""Get a list of users and whether they're admin or not, as a list of tuples"""
+		with self.connect() as cursor:
+			cursor.execute("SELECT username, admin FROM user")
+			results = cursor.fetchall()
+			return results
+
 	def export_db_to_json(self, filename):
 		"""Export the API db to a certain format JSON file"""
 		with self.connect() as cursor:
