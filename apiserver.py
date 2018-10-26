@@ -220,7 +220,31 @@ class Admin(Resource):
 	@admin_required
 	def post(self):
 		"""Modify user"""
-		pass
+		parser = reqparse.RequestParser()
+		parser.add_argument("username", required=True, type=str)
+		parser.add_argument("new_username", required=False, type=str)
+		parser.add_argument("new_password", required=False, type=str)
+		parser.add_argument("set_admin", required=False, type=bool)
+		args = parser.parse_args()
+
+		if not db.check_user_exists(args["username"]):
+			return response(False, "User does not exist"), 400
+
+		# Set / remove admin for users, but don't allow users to de-admin themselves!
+		if args["set_admin"] is not None:
+			if args["username"] == get_jwt_identity():
+				return response(False, "For safety you can't de-admin yourself, use another account or get someone else to do it"), 400
+			db.set_admin(args["username"], args["set_admin"])
+
+		# Change password
+		if args["new_password"] is not None:
+			db.change_passwd(args["username"], args["new_password"])
+
+		# Username changes (why would anyone WANT this?)
+		if args["new_username"] is not None:
+			db.change_username(args["username"], args["new_username"])
+
+		return response(True, "User '{}' modified".format(args["username"]))
 
 	@jwt_required
 	@admin_required

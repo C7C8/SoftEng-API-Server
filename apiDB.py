@@ -37,6 +37,26 @@ class APIDatabase:
 			cursor.execute("DELETE FROM user WHERE username=%s", username)
 			cursor.connection.commit()
 
+	def change_passwd(self, username, password):
+		"""Change a user's password"""
+		with self.connect() as cursor:
+			sql = "UPDATE user SET password=%s WHERE username=%s"
+			cursor.execute(sql, (hashpw(password, gensalt()), username))
+			cursor.connection.commit()
+
+	def change_username(self, username, new_username):
+		"""Change a username"""
+		with self.connect() as cursor:
+			cursor.execute("UPDATE user SET username=%s WHERE username=%s", (new_username, username))
+			cursor.execute("UPDATE api SET creator=%s WHERE creator=%s", (new_username, username))
+			cursor.connection.commit()
+
+	def set_admin(self, username, admin):
+		"""Set whether a user is an admin or not"""
+		with self.connect() as cursor:
+			cursor.execute("UPDATE user SET admin=%s WHERE username=%s", (1 if admin else 0, username))
+			cursor.connection.commit()
+
 	def authenticate(self, username, password):
 		"""Authenticate username/password combo, returns tuple of booleans (one for auth, second for admin rights"""
 		with self.connect() as cursor:
