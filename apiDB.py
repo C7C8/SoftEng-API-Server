@@ -65,7 +65,14 @@ class APIDatabase:
 			if res is None:
 				return False, False
 
-		return checkpw(password, res[0]), res[1] > 0
+			auth, admin = checkpw(password, res[0]), res[1] > 0
+
+			# Set the user's last login time
+			if auth:
+				cursor.execute("UPDATE user SET last_login=CURRENT_TIMESTAMP WHERE username=%s", username)
+				cursor.connection.commit()
+
+			return auth, admin
 
 	def is_admin(self, username):
 		with self.connect() as cursor:
@@ -271,9 +278,17 @@ class APIDatabase:
 	def get_user_list(self):
 		"""Get a list of users and whether they're admin or not, as a list of tuples"""
 		with self.connect() as cursor:
-			cursor.execute("SELECT username, admin FROM user")
+			cursor.execute("SELECT username, admin, registration, last_login FROM user")
 			results = cursor.fetchall()
-			return results
+			ret = []
+			for res in results:
+				ret.append({
+					"username": res[0],
+					"admin": res[1],
+					"registered": time.mktime(res[2].timetuple()) * 1000,
+					"last_login": time.mktime(res[3].timetuple()) * 1000
+				})
+			return ret
 
 	def export_db_to_json(self, filename):
 		"""Export the API db to a certain format JSON file"""

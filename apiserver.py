@@ -213,7 +213,7 @@ class Admin(Resource):
 	@admin_required
 	def get(self):
 		"""Get list of users"""
-		users = [{"username": user[0], "admin": user[1] != 0} for user in db.get_user_list()]
+		users = db.get_user_list()
 		return response(True, "Retrieved {} users".format(len(users)), "users", users), 200
 
 	@jwt_required
