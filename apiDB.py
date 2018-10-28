@@ -286,10 +286,10 @@ class APIDatabase:
 			for res in results:
 				ret.append({
 					"username": res[0],
-					"admin": res[1],
+					"admin": res[1] > 0,
 					"registered": time.mktime(res[2].timetuple()) * 1000,
 					"last_login": time.mktime(res[3].timetuple()) * 1000,
-					"locked": res[4]
+					"locked": res[4] > 0
 				})
 			return ret
 
