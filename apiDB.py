@@ -58,12 +58,12 @@ class APIDatabase:
 			cursor.connection.commit()
 
 	def authenticate(self, username, password):
-		"""Authenticate username/password combo, returns tuple of booleans (one for auth, second for admin rights"""
+		"""Authenticate username/password combo, returns tuple of booleans (one for auth, one for admin, one for locked"""
 		with self.connect() as cursor:
 			cursor.execute("SELECT password, admin, locked FROM user WHERE username=%s", username)
 			res = cursor.fetchone()
 			if res is None:
-				return False, False
+				return False, False, False
 
 			auth, admin = checkpw(password, res[0]), res[1] > 0
 
