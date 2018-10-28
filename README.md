@@ -1,4 +1,6 @@
-# CS3733 API Server Backend
+# CS3733 API Server Backend | 1.1.0
 
-Python code for the CS3733 API server. Will probably be merged into the other
-repository, eventually.
+Python code for the Software Engineering API server. Built on Flask,
+responsible for managing all back end data, including users, APIs, versions,
+data CRUD functionality, and Maven integration.
+
