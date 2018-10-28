@@ -102,9 +102,11 @@ class Login(Resource):
 		parser.add_argument("password", required=True, type=str)
 
 		args = parser.parse_args()
-		authenticated, admin = db.authenticate(args["username"], args["password"])
-		if not authenticated:
+		auth, admin, locked = db.authenticate(args["username"], args["password"])
+		if not auth:
 			return response(False, "Invalid credentials"), 401
+		if locked:
+			return response(False, "Account locked, please contact site administrator!")
 		expires = datetime.timedelta(hours=1)
 		token = create_access_token(args["username"], expires_delta=expires)
 		return {
@@ -225,6 +227,7 @@ class Admin(Resource):
 		parser.add_argument("new_username", required=False, type=str)
 		parser.add_argument("new_password", required=False, type=str)
 		parser.add_argument("set_admin", required=False, type=bool)
+		parser.add_argument("lock", required=False, type=bool)
 		args = parser.parse_args()
 
 		if not db.check_user_exists(args["username"]):
@@ -243,6 +246,10 @@ class Admin(Resource):
 		# Username changes (why would anyone WANT this?)
 		if args["new_username"] is not None:
 			db.change_username(args["username"], args["new_username"])
+
+		# Lock user from accessing their account
+		if args["lock"] is not None:
+			db.set_user_lock(args["username"], args["lock"])
 
 		return response(True, "User '{}' modified".format(args["username"]))
 
