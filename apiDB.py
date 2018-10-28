@@ -58,26 +58,35 @@ class APIDatabase:
 			cursor.connection.commit()
 
 	def authenticate(self, username, password):
-		"""Authenticate username/password combo, returns tuple of booleans (one for auth, second for admin rights"""
+		"""Authenticate username/password combo, returns tuple of booleans (one for auth, one for admin, one for locked"""
 		with self.connect() as cursor:
-			cursor.execute("SELECT password, admin FROM user WHERE username=%s", username)
+			cursor.execute("SELECT password, admin, locked FROM user WHERE username=%s", username)
 			res = cursor.fetchone()
 			if res is None:
-				return False, False
+				return False, False, False
 
-		return checkpw(password, res[0]), res[1] > 0
+			auth, admin = checkpw(password, res[0]), res[1] > 0
+
+			# Set the user's last login time
+			if auth:
+				cursor.execute("UPDATE user SET last_login=CURRENT_TIMESTAMP WHERE username=%s", username)
+				cursor.connection.commit()
+
+			return auth, admin, res[2]
 
 	def is_admin(self, username):
 		with self.connect() as cursor:
-			try:
-				cursor.execute("SELECT admin FROM user WHERE username=%s", username)
-				res = cursor.fetchone()
-				if res is None:
-					return False
-
-				return res[0] > 0
-			except:
+			cursor.execute("SELECT admin FROM user WHERE username=%s", username)
+			res = cursor.fetchone()
+			if res is None:
 				return False
+
+			return res[0] > 0
+
+	def set_user_lock(self, username, locked):
+		with self.connect() as cursor:
+			cursor.execute("UPDATE user SET locked=%s WHERE username=%s", (locked, username))
+			cursor.connection.commit()
 
 	def check_user_exists(self, username):
 		"""Verify that a user exists; helper function for JWT authentication"""
@@ -271,9 +280,18 @@ class APIDatabase:
 	def get_user_list(self):
 		"""Get a list of users and whether they're admin or not, as a list of tuples"""
 		with self.connect() as cursor:
-			cursor.execute("SELECT username, admin FROM user")
+			cursor.execute("SELECT username, admin, registration, last_login, locked FROM user")
 			results = cursor.fetchall()
-			return results
+			ret = []
+			for res in results:
+				ret.append({
+					"username": res[0],
+					"admin": res[1] > 0,
+					"registered": time.mktime(res[2].timetuple()) * 1000,
+					"last_login": time.mktime(res[3].timetuple()) * 1000,
+					"locked": res[4] > 0
+				})
+			return ret
 
 	def export_db_to_json(self, filename):
 		"""Export the API db to a certain format JSON file"""
