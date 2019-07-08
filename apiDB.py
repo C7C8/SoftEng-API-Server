@@ -162,9 +162,15 @@ class APIDatabase:
 				data = base64.standard_b64decode(kwargs["image"])
 				mtype = mime.from_buffer(data)
 				if mtype.find("image/") != -1:
-					if self.__get_image_name(api_id) is not None:
-						os.remove(self.__get_image_file_loc(api_id))
+
+					# If the DB already has a file listed for this API, delete it
+					# S3 would allow overwrites, but not if the filename isn't identical (e.g. *.jpg->*.png)
+					filename = self.__get_image_name(api_id)
+					if filename is not None:
+						self.bucket.delete_key(filename)
+
 					filename = os.path.join(self.img_dir, api_id + "." + mtype[mtype.find("/") + 1:])
+					cursor.execute("UPDATE api SET image_url=%s WHERE id=%s", (filename, api_id))
 					self.bucket.put_object(Key=filename, Body=data)
 				else:
 					print("Received image file for API " + api_id + ", but it wasn't an image!")
@@ -176,7 +182,7 @@ class APIDatabase:
 				file_type = mime.from_buffer(data)
 				if file_type.find("application/zip") == -1 and file_type.find('application/java-archive') == -1:
 					cursor.connection.rollback()
-					return False, "Received file for API but it wasn't a jar file!"
+					return False, "Received file for API but it wasn't a jar file"
 
 				# Update version, size, timestamp
 				sql = "UPDATE api SET version=%s, size=%s, lastupdate=CURRENT_TIMESTAMP() WHERE id=%s"
@@ -346,14 +352,12 @@ class APIDatabase:
 					})
 				ret["classes"][index]["apis"].append(apiInfo)
 
-			with open(filename, "w") as out:
-				out.write(json.dumps(ret))
+			self.bucket.put_object(Key=filename, Body=json.dumps(ret))
 
 	def __get_image_name(self, api_id):
-		for file in os.listdir(self.img_dir):
-			if file.startswith(api_id):
-				return os.path.join(os.path.basename(self.img_dir), file)
-		return None
+		with self.connect() as cursor:
+			cursor.execute("SELECT image_url FROM api WHERE id=%s", api_id)
+			return cursor.fetchone()[0]
 
 	def __get_image_file_loc(self, api_id):
 		for file in os.listdir(self.img_dir):

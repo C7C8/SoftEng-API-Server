@@ -1,6 +1,10 @@
 CREATE TABLE IF NOT EXISTS user (
   username    VARCHAR(32)   PRIMARY KEY,
-  password    CHAR(60)      NOT NULL
+  password    CHAR(60)      NOT NULL,
+  admin       INT           DEFAULT 0,
+  locked      INT           DEFAULT 0,
+  last_login  TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+  registration TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS api (
@@ -17,6 +21,7 @@ CREATE TABLE IF NOT EXISTS api (
   team        CHAR(1)       NOT NULL,
   lastupdate  TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
   creator     VARCHAR(32)   NOT NULL,
+  image_url   VARCHAR(48),
   CONSTRAINT FOREIGN KEY creatorref(creator) REFERENCES user(username) ON UPDATE CASCADE,
   CONSTRAINT uniq_artifact UNIQUE(artifactID, groupID)
 );
