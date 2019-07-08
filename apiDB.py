@@ -171,6 +171,7 @@ class APIDatabase:
 
 					filename = os.path.join(self.img_dir, api_id + "." + mtype[mtype.find("/") + 1:])
 					cursor.execute("UPDATE api SET image_url=%s WHERE id=%s", (filename, api_id))
+					cursor.connection.commit()
 					self.bucket.put_object(Key=filename, Body=data)
 				else:
 					print("Received image file for API " + api_id + ", but it wasn't an image!")
@@ -230,8 +231,6 @@ class APIDatabase:
 
 			cursor.execute("UPDATE api SET display='N' WHERE id=%s", api_id)
 			cursor.connection.commit()
-			if self.__get_image_name(api_id) is not None:
-				os.remove(self.__get_image_file_loc(api_id))
 			return True
 
 	def get_api_id(self, group_id, artifact_id):
