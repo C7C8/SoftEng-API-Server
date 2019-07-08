@@ -10,14 +10,16 @@ from distutils.version import StrictVersion
 import magic
 import pymysql
 from bcrypt import hashpw, gensalt, checkpw
+import boto3
 
 
 class APIDatabase:
-	def __init__(self, host, port, user, password, database, img_dir, jar_dir):
+	def __init__(self, host, port, user, password, database, img_dir, jar_dir, bucket_name):
 		self.__dict__.update({k: v for k, v in locals().items() if k != 'self'})
+		self.bucket = boto3.resource("s3").Bucket(bucket_name)
 
 	def connect(self):
-		return pymysql.connect(**{k: v for k, v in self.__dict__.items() if k != 'img_dir' and k != 'jar_dir'}).cursor()
+		return pymysql.connect(host=self.host, port=self.port, database=self.database, user=self.user, password=self.password).cursor()
 
 	def register_user(self, username, password):
 		"""Add a user to the database, if they don't already exist."""
@@ -163,8 +165,7 @@ class APIDatabase:
 					if self.__get_image_name(api_id) is not None:
 						os.remove(self.__get_image_file_loc(api_id))
 					filename = os.path.join(self.img_dir, api_id + "." + mtype[mtype.find("/") + 1:])
-					with open(filename, "wb") as image:
-						image.write(data)
+					self.bucket.put_object(Key=filename, Body=data)
 				else:
 					print("Received image file for API " + api_id + ", but it wasn't an image!")
 

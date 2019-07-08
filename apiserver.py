@@ -19,7 +19,8 @@ conf = {
 	"db-port": 3306,
 	"db-user": "list-api-service",
 	"db-password": "pass",
-	"db-schema": "apilist"
+	"db-schema": "apilist",
+	"s3-bucket": "bucket"
 }
 try:
 	with open("conf.json", "r") as file:
@@ -39,7 +40,7 @@ jwt._set_error_handler_callbacks(api)  # plz stop returning 500 Server Error
 ns = api.namespace("api", description="API list functionality")
 
 db = APIDatabase(conf["db-host"], conf["db-port"], conf["db-user"], conf["db-password"], conf["db-schema"],
-				 conf["img-dir"], conf["jar-dir"])
+				 conf["img-dir"], conf["jar-dir"], conf["s3-bucket"])
 
 if not os.path.exists(conf["img-dir"]):
 	os.makedirs(conf["img-dir"])
