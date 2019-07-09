@@ -211,12 +211,21 @@ class APIDatabase:
 					cursor.connection.rollback()
 					return False, "Failed to update API; duplicate version detected"
 
+				sql = "SELECT groupID, artifactID FROM api WHERE id=%s"
+				cursor.execute(sql, api_id)
+				res = cursor.fetchone()
 				store_jar_in_maven_repo(base_dir=self.jar_dir,
 										group=res[0],
 										artifact=res[1],
 										version=version_string,
 										bucket=self.bucket,
 										file=base64.standard_b64decode(kwargs["jar"]))
+
+			# Jars must be accompanied by versions; if we have one but not the other, throw an error
+			elif ("jar" in kwargs.keys() and "version" not in kwargs.keys())\
+					or ("version" in kwargs.keys() and "jar" not in kwargs.keys()):
+				cursor.connection.rollback()
+				return False, "Jar files must be accompanied by versions" if "jar" in kwargs.keys() else "Empty versions disallowed"
 
 			cursor.connection.commit()
 		return True, "Updated API"

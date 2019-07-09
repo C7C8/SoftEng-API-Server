@@ -18,13 +18,12 @@ def store_jar_in_maven_repo(base_dir, group, artifact, version, bucket, file):
 		doc.findall("./versioning/release")[0].text = version
 		write_xml(bucket, maven_metadata_local_filename, doc)
 
-	# For some reason I can't catch NoSuchKey exceptions...
 	except ClientError:
 		write_xml(bucket, maven_metadata_local_filename, new_maven_metadata_local(group, artifact, version))
 
 	# Now create an appropriate POM file and jar file in the appropriate di
 	api_key_base = "{}/{}/{}-{}".format(api_dir, version, artifact, version)
-	write_xml(bucket, api_key_base + ".xml", new_maven_pom(group, artifact, version))
+	write_xml(bucket, api_key_base + ".pom", new_maven_pom(group, artifact, version))
 	bucket.put_object(Key=api_key_base + ".jar", Body=file)
 
 
