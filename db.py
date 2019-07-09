@@ -1,25 +1,37 @@
+import base64
+import html
+import json
 import os
 import re
-import html
-import uuid
 import time
-import json
-import base64
+import uuid
 from distutils.version import StrictVersion
 
+import boto3
 import magic
 import pymysql
 from bcrypt import hashpw, gensalt, checkpw
-import boto3
+
+from maven import store_jar_in_maven_repo
 
 
 class APIDatabase:
 	def __init__(self, host, port, user, password, database, img_dir, jar_dir, bucket_name):
-		self.__dict__.update({k: v for k, v in locals().items() if k != 'self'})
+		self.host = host
+		self.port = port
+		self.user = user
+		self.password = password
+		self.database = database
+		self.img_dir = img_dir
+		self.jar_dir = jar_dir
 		self.bucket = boto3.resource("s3").Bucket(bucket_name)
 
 	def connect(self):
-		return pymysql.connect(host=self.host, port=self.port, database=self.database, user=self.user, password=self.password).cursor()
+		return pymysql.connect(host=self.host,
+							   port=self.port,
+							   database=self.database,
+							   user=self.user,
+							   password=self.password).cursor()
 
 	def register_user(self, username, password):
 		"""Add a user to the database, if they don't already exist."""
@@ -167,7 +179,8 @@ class APIDatabase:
 					# S3 would allow overwrites, but not if the filename isn't identical (e.g. *.jpg->*.png)
 					filename = self.__get_image_name(api_id)
 					if filename is not None:
-						self.bucket.delete_key(filename)
+						# Okay wtf Amazon, what is WITH this delete syntax?
+						self.bucket.delete_objects(Delete={'Objects': [{"Key": filename}]})
 
 					filename = os.path.join(self.img_dir, api_id + "." + mtype[mtype.find("/") + 1:])
 					cursor.execute("UPDATE api SET image_url=%s WHERE id=%s", (filename, api_id))
@@ -187,33 +200,23 @@ class APIDatabase:
 
 				# Update version, size, timestamp
 				sql = "UPDATE api SET version=%s, size=%s, lastupdate=CURRENT_TIMESTAMP() WHERE id=%s"
-				vstring = re.search("\d+\.\d+\.\d+", kwargs["version"]).group(0)  # Safe because we already validated it
-				cursor.execute(sql, (vstring, len(data) / 1000000, api_id))
+				version_string = re.search("\d+\.\d+\.\d+", kwargs["version"]).group(0)  # Safe because we already validated it
+				cursor.execute(sql, (version_string, len(data) / 1000000, api_id))  # bytes -> mb
 
 				# Add version string to new entry in version table
 				sql = "INSERT INTO version(apiId, vnumber, info) VALUES (%s, %s, %s)"
 				try:
-					cursor.execute(sql, (api_id, vstring, kwargs["version"].replace(vstring, "").lstrip()))
+					cursor.execute(sql, (api_id, version_string, kwargs["version"].replace(version_string, "").lstrip()))
 				except pymysql.IntegrityError:
 					cursor.connection.rollback()
 					return False, "Failed to update API; duplicate version detected"
 
-				filename = os.path.join(self.jar_dir, api_id + ".jar")
-				with open(filename, "wb") as jar:
-					jar.write(base64.standard_b64decode(kwargs["jar"]))
-
-				# Install jar file into maven repository! Yeah, I do it with a system() command, sue me.
-				sql = "SELECT groupID, artifactID FROM api WHERE id=%s"
-				cursor.execute(sql, api_id)
-				res = cursor.fetchone()
-				os.system("mvn install:install-file -Dfile={} "
-					  "-DgroupId={} "
-					  "-DartifactId={} "
-					  "-Dversion={} "
-					  "-Dpackaging=jar "
-					  "-DlocalRepositoryPath={}"
-					  .format(filename, res[0], res[1], vstring, self.jar_dir))
-				os.remove(filename)
+				store_jar_in_maven_repo(base_dir=self.jar_dir,
+										group=res[0],
+										artifact=res[1],
+										version=version_string,
+										bucket=self.bucket,
+										file=base64.standard_b64decode(kwargs["jar"]))
 
 			cursor.connection.commit()
 		return True, "Updated API"
