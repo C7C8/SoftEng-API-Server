@@ -269,4 +269,4 @@ class Admin(Resource):
 
 # Run Flask development server
 if __name__ == "__main__":
-	app.run(port=conf["server-port"])
+	app.run()

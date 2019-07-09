@@ -22,8 +22,9 @@ CREATE TABLE IF NOT EXISTS api (
   lastupdate  TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
   creator     VARCHAR(32),
   image_url   VARCHAR(48),
+  display     CHAR(1)       CHECK(display="Y" OR display="N") DEFAULT "Y",
   CONSTRAINT FOREIGN KEY creator_ref(creator) REFERENCES user(username) ON UPDATE CASCADE ON DELETE SET NULL,
-  CONSTRAINT uniq_artifact UNIQUE(artifactID, groupID)
+  CONSTRAINT uniq_artifact  UNIQUE(artifactID, groupID)
 );
 
 CREATE TABLE IF NOT EXISTS version (
