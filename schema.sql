@@ -20,9 +20,9 @@ CREATE TABLE IF NOT EXISTS api (
   year        INT           NOT NULL,
   team        CHAR(1)       NOT NULL,
   lastupdate  TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
-  creator     VARCHAR(32)   NOT NULL,
+  creator     VARCHAR(32),
   image_url   VARCHAR(48),
-  CONSTRAINT FOREIGN KEY creatorref(creator) REFERENCES user(username) ON UPDATE CASCADE,
+  CONSTRAINT FOREIGN KEY creator_ref(creator) REFERENCES user(username) ON UPDATE CASCADE ON DELETE SET NULL,
   CONSTRAINT uniq_artifact UNIQUE(artifactID, groupID)
 );
 
