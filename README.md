@@ -1,4 +1,4 @@
-# CS3733 API Server Backend | 1.1.0
+# CS3733 API Server Backend | 1.2
 
 Python code for the Software Engineering API server. Built on Flask,
 responsible for managing all back end data, including users, APIs, versions,

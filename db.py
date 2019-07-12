@@ -16,7 +16,7 @@ from maven import store_jar_in_maven_repo
 
 
 class APIDatabase:
-	def __init__(self, host, port, user, password, database, img_dir, jar_dir, bucket_name):
+	def __init__(self, host, port, user, password, database, img_dir, jar_dir, bucket_name, access_key, secret_key):
 		self.host = host
 		self.port = port
 		self.user = user
@@ -24,7 +24,7 @@ class APIDatabase:
 		self.database = database
 		self.img_dir = img_dir
 		self.jar_dir = jar_dir
-		self.bucket = boto3.resource("s3").Bucket(bucket_name)
+		self.bucket = boto3.resource("s3", aws_access_key_id=access_key, aws_secret_access_key=secret_key).Bucket(bucket_name)
 
 	def connect(self):
 		return pymysql.connect(host=self.host,
