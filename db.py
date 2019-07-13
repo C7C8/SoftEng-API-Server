@@ -1,23 +1,37 @@
+import base64
+import html
+import json
 import os
 import re
-import html
-import uuid
 import time
-import json
-import base64
+import uuid
 from distutils.version import StrictVersion
 
+import boto3
 import magic
 import pymysql
 from bcrypt import hashpw, gensalt, checkpw
 
+from maven import store_jar_in_maven_repo
+
 
 class APIDatabase:
-	def __init__(self, host, port, user, password, database, img_dir, jar_dir):
-		self.__dict__.update({k: v for k, v in locals().items() if k != 'self'})
+	def __init__(self, host, port, user, password, database, img_dir, jar_dir, bucket_name, access_key, secret_key):
+		self.host = host
+		self.port = port
+		self.user = user
+		self.password = password
+		self.database = database
+		self.img_dir = img_dir
+		self.jar_dir = jar_dir
+		self.bucket = boto3.resource("s3", aws_access_key_id=access_key, aws_secret_access_key=secret_key).Bucket(bucket_name)
 
 	def connect(self):
-		return pymysql.connect(**{k: v for k, v in self.__dict__.items() if k != 'img_dir' and k != 'jar_dir'}).cursor()
+		return pymysql.connect(host=self.host,
+							   port=self.port,
+							   database=self.database,
+							   user=self.user,
+							   password=self.password).cursor()
 
 	def register_user(self, username, password):
 		"""Add a user to the database, if they don't already exist."""
@@ -160,11 +174,18 @@ class APIDatabase:
 				data = base64.standard_b64decode(kwargs["image"])
 				mtype = mime.from_buffer(data)
 				if mtype.find("image/") != -1:
-					if self.__get_image_name(api_id) is not None:
-						os.remove(self.__get_image_file_loc(api_id))
+
+					# If the DB already has a file listed for this API, delete it
+					# S3 would allow overwrites, but not if the filename isn't identical (e.g. *.jpg->*.png)
+					filename = self.__get_image_name(api_id)
+					if filename is not None:
+						# Okay wtf Amazon, what is WITH this delete syntax?
+						self.bucket.delete_objects(Delete={'Objects': [{"Key": filename}]})
+
 					filename = os.path.join(self.img_dir, api_id + "." + mtype[mtype.find("/") + 1:])
-					with open(filename, "wb") as image:
-						image.write(data)
+					cursor.execute("UPDATE api SET image_url=%s WHERE id=%s", (filename, api_id))
+					cursor.connection.commit()
+					self.bucket.put_object(Key=filename, Body=data)
 				else:
 					print("Received image file for API " + api_id + ", but it wasn't an image!")
 
@@ -175,37 +196,36 @@ class APIDatabase:
 				file_type = mime.from_buffer(data)
 				if file_type.find("application/zip") == -1 and file_type.find('application/java-archive') == -1:
 					cursor.connection.rollback()
-					return False, "Received file for API but it wasn't a jar file!"
+					return False, "Received file for API but it wasn't a jar file"
 
 				# Update version, size, timestamp
 				sql = "UPDATE api SET version=%s, size=%s, lastupdate=CURRENT_TIMESTAMP() WHERE id=%s"
-				vstring = re.search("\d+\.\d+\.\d+", kwargs["version"]).group(0)  # Safe because we already validated it
-				cursor.execute(sql, (vstring, len(data) / 1000000, api_id))
+				version_string = re.search("\d+\.\d+\.\d+", kwargs["version"]).group(0)  # Safe because we already validated it
+				cursor.execute(sql, (version_string, len(data) / 1000000, api_id))  # bytes -> mb
 
 				# Add version string to new entry in version table
 				sql = "INSERT INTO version(apiId, vnumber, info) VALUES (%s, %s, %s)"
 				try:
-					cursor.execute(sql, (api_id, vstring, kwargs["version"].replace(vstring, "").lstrip()))
+					cursor.execute(sql, (api_id, version_string, kwargs["version"].replace(version_string, "").lstrip()))
 				except pymysql.IntegrityError:
 					cursor.connection.rollback()
 					return False, "Failed to update API; duplicate version detected"
 
-				filename = os.path.join(self.jar_dir, api_id + ".jar")
-				with open(filename, "wb") as jar:
-					jar.write(base64.standard_b64decode(kwargs["jar"]))
-
-				# Install jar file into maven repository! Yeah, I do it with a system() command, sue me.
 				sql = "SELECT groupID, artifactID FROM api WHERE id=%s"
 				cursor.execute(sql, api_id)
 				res = cursor.fetchone()
-				os.system("mvn install:install-file -Dfile={} "
-					  "-DgroupId={} "
-					  "-DartifactId={} "
-					  "-Dversion={} "
-					  "-Dpackaging=jar "
-					  "-DlocalRepositoryPath={}"
-					  .format(filename, res[0], res[1], vstring, self.jar_dir))
-				os.remove(filename)
+				store_jar_in_maven_repo(base_dir=self.jar_dir,
+										group=res[0],
+										artifact=res[1],
+										version=version_string,
+										bucket=self.bucket,
+										file=base64.standard_b64decode(kwargs["jar"]))
+
+			# Jars must be accompanied by versions; if we have one but not the other, throw an error
+			elif ("jar" in kwargs.keys() and "version" not in kwargs.keys())\
+					or ("version" in kwargs.keys() and "jar" not in kwargs.keys()):
+				cursor.connection.rollback()
+				return False, "Jar files must be accompanied by versions" if "jar" in kwargs.keys() else "Empty versions disallowed"
 
 			cursor.connection.commit()
 		return True, "Updated API"
@@ -223,8 +243,6 @@ class APIDatabase:
 
 			cursor.execute("UPDATE api SET display='N' WHERE id=%s", api_id)
 			cursor.connection.commit()
-			if self.__get_image_name(api_id) is not None:
-				os.remove(self.__get_image_file_loc(api_id))
 			return True
 
 	def get_api_id(self, group_id, artifact_id):
@@ -345,14 +363,12 @@ class APIDatabase:
 					})
 				ret["classes"][index]["apis"].append(apiInfo)
 
-			with open(filename, "w") as out:
-				out.write(json.dumps(ret))
+			self.bucket.put_object(Key=filename, Body=json.dumps(ret))
 
 	def __get_image_name(self, api_id):
-		for file in os.listdir(self.img_dir):
-			if file.startswith(api_id):
-				return os.path.join(os.path.basename(self.img_dir), file)
-		return None
+		with self.connect() as cursor:
+			cursor.execute("SELECT image_url FROM api WHERE id=%s", api_id)
+			return cursor.fetchone()[0]
 
 	def __get_image_file_loc(self, api_id):
 		for file in os.listdir(self.img_dir):

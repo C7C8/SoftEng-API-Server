@@ -1,12 +1,11 @@
 import datetime
-import os
 from json import loads
 
 from flask import Flask, Blueprint
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager
 from flask_restplus import Api, Resource, reqparse
 
-from apiDB import APIDatabase
+from db import APIDatabase
 
 # Load configuration
 conf = {
@@ -19,7 +18,11 @@ conf = {
 	"db-port": 3306,
 	"db-user": "list-api-service",
 	"db-password": "pass",
-	"db-schema": "apilist"
+	"db-schema": "apilist",
+
+	"s3-bucket": "bucket",
+	"aws_access_key_id": "ACCESS_KEY",
+	"aws_secret_access_key":  "SECRET_KEY"
 }
 try:
 	with open("conf.json", "r") as file:
@@ -39,12 +42,8 @@ jwt._set_error_handler_callbacks(api)  # plz stop returning 500 Server Error
 ns = api.namespace("api", description="API list functionality")
 
 db = APIDatabase(conf["db-host"], conf["db-port"], conf["db-user"], conf["db-password"], conf["db-schema"],
-				 conf["img-dir"], conf["jar-dir"])
-
-if not os.path.exists(conf["img-dir"]):
-	os.makedirs(conf["img-dir"])
-if not os.path.exists(conf["jar-dir"]):
-	os.makedirs(conf["jar-dir"])
+				 conf["img-dir"], conf["jar-dir"], conf["s3-bucket"], conf["aws_access_key_id"],
+				 conf["aws_secret_access_key"])
 
 
 def response(success, message, descriptor=None, payload=None):
@@ -141,7 +140,7 @@ class List(Resource):
 					db.export_db_to_json(conf["json-output"])
 					return response(True, "Created API '{}'".format(info["name"]), "id", apiID), 201
 				else:
-					return response(False, "Failed to create API '{}'".format(info["name"])), 400
+					return response(False, "Failed to create API '{}': {}".format(info["name"], apiID)), 400
 			else:
 				return response(False, "Failed to create API< not enough arguments (name, contact, description, term, year, team)"), 400
 
@@ -268,4 +267,4 @@ class Admin(Resource):
 
 # Run Flask development server
 if __name__ == "__main__":
-	app.run(port=conf["server-port"])
+	app.run()
