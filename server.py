@@ -127,7 +127,7 @@ class List(Resource):
 	@jwt_required
 	def post(self):
 		"""Create or update API data"""
-		if not db.check_user_exists(get_jwt_identity()):
+		if db.get_user(get_jwt_identity()) is None:
 			return response(False, "User does not exist", "username", get_jwt_identity()), 401
 
 		parser = reqparse.RequestParser()
@@ -144,7 +144,7 @@ class List(Resource):
 										   info["term"],
 										   info["year"], info["team"])
 				if res:
-					db.export_db_to_json(conf["json-output"])
+					db.export_db_to_json(server_conf["json-output"])
 					return response(True, "Created API '{}'".format(info["name"]), "id", apiID), 201
 				else:
 					return response(False, "Failed to create API '{}': {}".format(info["name"], apiID)), 400
@@ -153,65 +153,40 @@ class List(Resource):
 								"Failed to create API< not enough arguments (name, contact, description, term, year, team)"), 400
 
 		elif action == "update":
-			parser.add_argument("id", help="API ID", required=False, type=str)
-			parser.add_argument("groupID", help="API group ID", required=False, type=str)
-			parser.add_argument("artifactID", help="API artifact ID", required=False, type=str)
+			parser.add_argument("id", help="API ID", required=True, type=str)
 			args = parser.parse_args()
-			if (args["id"] is None) and ((args["artifactID"] is None) or (args["groupID"] is None)):
-				return response(False,
-								"Not enough info to find API; either provide an ID or use a group/artifact combination"), 400
-
-			apiID = args["id"] if args["id"] is not None else db.get_api_id(args["groupID"], args["artifactID"])
-			if apiID is None:
-				return response(False, "Failed to find API"), 400
 
 			if len(args["info"].keys()) == 0:
 				return response(False, "Didn't include any data to update"), 400
 
-			stat, message = db.update_api(get_jwt_identity(), apiID, **args["info"])
-			db.export_db_to_json(conf["json-output"])
-			return response(stat, message, "id", apiID), 200 if stat else 400
+			stat, message = db.update_api(get_jwt_identity(), args["id"], **args["info"])
+			db.export_db_to_json(server_conf["json-output"])
+			return response(stat, message, "id", args["id"]), 200 if stat else 400
 
 	@jwt_required
 	def delete(self):
 		"""Delete an API listing and all associated metadata. Does NOT delete Jar files from the Maven repository"""
-		if not db.check_user_exists(get_jwt_identity()):
+		if db.get_user(get_jwt_identity()) is None:
 			return {"message": "User does not exist", "username": get_jwt_identity()}, 401
 
 		parser = reqparse.RequestParser()
-		parser.add_argument("id", help="API ID", required=False, type=str)
-		parser.add_argument("groupID", help="API group ID", required=False, type=str)
-		parser.add_argument("artifactID", help="API artifact ID", required=False, type=str)
+		parser.add_argument("id", help="API ID", required=True, type=str)
 		args = parser.parse_args()
 
-		if (args["id"] is None) and ((args["artifactID"] is None) or (args["groupID"] is None)):
-			return response(False,
-							"Not enough info to find API; either provide an ID or use a group/artifact combination"), 400
-
-		apiID = args["id"] if args["id"] is not None else db.get_api_id(args["groupID"], args["artifactID"])
-
-		if apiID is not None and db.delete_api(get_jwt_identity(), apiID):
-			db.export_db_to_json(conf["json-output"])
-			return response(True, "Successfully deleted API", "id", apiID), 200
+		if db.delete_api(get_jwt_identity(), args["id"]):
+			db.export_db_to_json(server_conf["json-output"])
+			return response(True, "Successfully deleted API", "id", args["id"]), 200
 		else:
-			return response(False, "Failed to delete API", "id", apiID), 400
+			return response(False, "Failed to delete API", "id", args["id"]), 400
 
 	def get(self):
 		"""Get information on an API, using its ID or its artifact+groupID"""
 		parser = reqparse.RequestParser()
-		parser.add_argument("id", required=False, type=str)
-		parser.add_argument("artifactID", required=False, type=str)
-		parser.add_argument("groupID", required=False, type=str)
+		parser.add_argument("id", required=True, type=str)
 		args = parser.parse_args()
-		if (args["id"] is None) and ((args["artifactID"] is None) or (args["groupID"] is None)):
-			return response(False,
-							"Not enough info to find API; either provide an ID or use a group/artifact combination"), 400
 
 		# Python won't let me do C-style assignments in if statements, so yeah, there's duped code here. Deal with it.
-		apiID = args["id"] if args["id"] is not None else db.get_api_id(args["groupID"], args["artifactID"])
-		if apiID is None:
-			return response(False, "Failed to find API"), 400
-		res = db.get_api_info(apiID)
+		res = db.get_api_info(args["id"])
 		if res is None:
 			return response(False, "Failed to find API", "id", args["id"]), 400
 		return res
@@ -240,7 +215,7 @@ class Admin(Resource):
 		parser.add_argument("lock", required=False, type=bool)
 		args = parser.parse_args()
 
-		if not db.check_user_exists(args["username"]):
+		if db.get_user(args["username"]) is None:
 			return response(False, "User does not exist"), 400
 
 		# Set / remove admin for users, but don't allow users to de-admin themselves!
@@ -271,7 +246,7 @@ class Admin(Resource):
 		parser = reqparse.RequestParser()
 		parser.add_argument("username", required=True, type=str)
 		username = parser.parse_args()["username"]
-		if not db.check_user_exists(username):
+		if db.get_user(username) is None:
 			return response(False, "User does not exist"), 400
 		db.delete_user(username)
 		return response(True, "User deleted"), 200
