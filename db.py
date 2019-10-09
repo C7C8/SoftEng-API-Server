@@ -45,7 +45,7 @@ class APIDatabase:
 				"locked": 0,
 				"last_login": int(time.time()),
 				"registration": int(time.time()),
-				"active": "true",
+				"active": "Y",
 				"apis": []
 			}
 		)
@@ -57,7 +57,7 @@ class APIDatabase:
 			Key={
 				"username": username
 			},
-			UpdateExpression="SET password = 0"
+			UpdateExpression="SET active = 'N'"
 		)
 
 	def change_passwd(self, username, password):
@@ -155,6 +155,8 @@ class APIDatabase:
 			"term": term,
 			"year": year,
 			"team": team,
+			"size": 0,
+			"version": "None",
 			"lastupdate": int(time.time()),
 			"display": "Y",
 			"versions": []
@@ -292,15 +294,17 @@ class APIDatabase:
 		current_user = self.get_user(username)
 		if current_user is None:
 			return False
-		elif len(list(filter(lambda api: api_id == api["id"], current_user["apis"]))) == 0 and current_user["admin"]:
-			_, current_user = self.__get_api_chain_by_id(api_id)
-		else:
-			return False
+		if len(list(filter(lambda api: api_id == api["id"], current_user["apis"]))) == 0:
+			if current_user["admin"]:
+				_, current_user = self.__get_api_chain_by_id(api_id)
+			else:
+				return False
 		current_api = list(filter(lambda api: api_id == api["id"], current_user["apis"]))[0]
 		current_api_index = current_user["apis"].index(current_api)
 		self.dynamo.update_item(
 			Key={"username": current_user["username"]},
-			UpdateExpression="SET apis[{}].display = 'N'".format(current_api_index),
+			UpdateExpression="SET apis[{}].display = :n".format(current_api_index),
+			ExpressionAttributeValues={":n": "N"}
 		)
 		return True
 
@@ -312,14 +316,14 @@ class APIDatabase:
 
 		# Fill out base API info data structure
 		ret = {
-			"id": api_id,
+			"id": api_id if api_id is not None else api["id"],
 			"name": api["name"],
 			"version": api["version"],
 			"size": float(api["size"]),
 			"contact": api["contact"],
 			"gradle": "[group: '{}', name: '{}', version:'{}']".format(api["groupID"], api["artifactID"], api["version"]),
 			"description": api["version"],
-			"image": api["image_url"],
+			"image": "" if "image_url" not in api.keys() else api["image_url"],
 			"updated": int(api["lastupdate"]) * 1000,
 			"term": api["term"],
 			"year": api["year"],
@@ -333,7 +337,7 @@ class APIDatabase:
 	def get_user_list(self):
 		"""Get a list of users and whether they're admin or not, as a list of tuples"""
 		users = self.dynamo.scan()["Items"]
-		return [user["username"] for user in users]
+		return [user["username"] for user in users if user["active"] == "Y"]
 
 	def export_db_to_json(self, filename):
 		"""Export the API db to a certain format JSON file"""
@@ -377,7 +381,6 @@ class APIDatabase:
 				})
 			ret["classes"][index]["apis"].append(apiInfo)
 
-		print(json.dumps(ret, indent=4))
 		self.bucket.put_object(Key=filename, Body=json.dumps(ret))
 
 	def __get_api_chain_by_id(self, api_id):
