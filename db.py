@@ -9,105 +9,129 @@ from distutils.version import StrictVersion
 
 import boto3
 import magic
-import pymysql
 from bcrypt import hashpw, gensalt, checkpw
 
 from maven import store_jar_in_maven_repo
 
 
 class APIDatabase:
-	def __init__(self, host, port, user, password, database, img_dir, jar_dir, bucket_name, access_key, secret_key):
-		self.host = host
-		self.port = port
-		self.user = user
-		self.password = password
-		self.database = database
+	def __init__(self, img_dir, jar_dir, table, region, bucket_name, access_key, secret_key):
 		self.img_dir = img_dir
 		self.jar_dir = jar_dir
 		self.bucket = boto3.resource("s3", aws_access_key_id=access_key, aws_secret_access_key=secret_key).Bucket(bucket_name)
+		self.dynamo = boto3.resource("dynamodb", aws_access_key_id=access_key, aws_secret_access_key=secret_key, region_name=region).Table(table)
 
-	def connect(self):
-		return pymysql.connect(host=self.host,
-							   port=self.port,
-							   database=self.database,
-							   user=self.user,
-							   password=self.password).cursor()
+	def __get_user(self, username):
+		"""Get a user's entry, or None if they don't exist"""
+		try:
+			ret = self.dynamo.get_item(Key={"username": username})
+			if "Item" not in ret.keys():
+				return None
+			return ret["Item"]
+		except Exception:
+			return None
 
 	def register_user(self, username, password):
 		"""Add a user to the database, if they don't already exist."""
-		with self.connect() as cursor:
-			if self.check_user_exists(username):
-				return False
+		if self.__get_user(username) is not None:
+			return False
 
-			sql = "INSERT INTO user (username, password) VALUES(%s, %s)"
-			cursor.execute(sql, (username, hashpw(password, gensalt())))
-			cursor.connection.commit()
-			return True
+		# TODO Better error handling?
+		self.dynamo.put_item(
+			Item={
+				"username": username,
+				"password": hashpw(password, gensalt()),
+				"admin": 0,
+				"locked": 0,
+				"last_login": int(time.time()),
+				"registration": int(time.time()),
+				"active": "true",
+				"apis": []
+			}
+		)
+		return True
 
 	def delete_user(self, username):
 		"""Delete a user from the database"""
-		with self.connect() as cursor:
-			cursor.execute("UPDATE api SET creator=NULL, display='N' WHERE creator=%s", username)
-			cursor.execute("DELETE FROM user WHERE username=%s", username)
-			cursor.connection.commit()
+		self.dynamo.update_item(
+			Key={
+				"username": username
+			},
+			UpdateExpression="SET password = 0"
+		)
 
 	def change_passwd(self, username, password):
 		"""Change a user's password"""
-		with self.connect() as cursor:
-			sql = "UPDATE user SET password=%s WHERE username=%s"
-			cursor.execute(sql, (hashpw(password, gensalt()), username))
-			cursor.connection.commit()
+		self.dynamo.update_item(
+			Key={
+				"username": username
+			},
+			UpdateExpression="SET password = :password",
+			ExpressionAttributeValues={
+				":password": hashpw(password, gensalt())
+			}
+		)
 
 	def change_username(self, username, new_username):
 		"""Change a username"""
-		with self.connect() as cursor:
-			cursor.execute("UPDATE user SET username=%s WHERE username=%s", (new_username, username))
-			cursor.execute("UPDATE api SET creator=%s WHERE creator=%s", (new_username, username))
-			cursor.connection.commit()
+		self.dynamo.update_item(
+			Key={
+				"username": username
+			},
+			UpdateExpression="SET username = :username",
+			ExpressionAttributeValues={
+				":username": new_username
+			}
+		)
 
 	def set_admin(self, username, admin):
 		"""Set whether a user is an admin or not"""
-		with self.connect() as cursor:
-			cursor.execute("UPDATE user SET admin=%s WHERE username=%s", (1 if admin else 0, username))
-			cursor.connection.commit()
+		self.dynamo.update_item(
+			Key={
+				"username": username
+			},
+			UpdateExpression="SET admin = :admin",
+			ExpressionAttributeValues={
+				":admin": admin
+			}
+		)
 
 	def authenticate(self, username, password):
 		"""Authenticate username/password combo, returns tuple of booleans (one for auth, one for admin, one for locked"""
-		with self.connect() as cursor:
-			cursor.execute("SELECT password, admin, locked FROM user WHERE username=%s", username)
-			res = cursor.fetchone()
-			if res is None:
-				return False, False, False
+		user = self.__get_user(username)
+		if user is None:
+			return False, False, False
+		auth = checkpw(password, user["password"])
+		if auth:
+			# Update last login time
+			self.dynamo.update_item(
+				Key={
+					"username": username
+				},
+				UpdateExpression="SET last_login = :time",
+				ExpressionAttributeValues={
+					":time": int(time.time())
+				}
+			)
+		else:
+			return False, False, False
 
-			auth, admin = checkpw(password, res[0]), res[1] > 0
-
-			# Set the user's last login time
-			if auth:
-				cursor.execute("UPDATE user SET last_login=CURRENT_TIMESTAMP WHERE username=%s", username)
-				cursor.connection.commit()
-
-			return auth, admin, res[2]
+		return auth, bool(user["admin"]), bool(user["locked"])
 
 	def is_admin(self, username):
-		with self.connect() as cursor:
-			cursor.execute("SELECT admin FROM user WHERE username=%s", username)
-			res = cursor.fetchone()
-			if res is None:
-				return False
-
-			return res[0] > 0
+		user = self.__get_user(username)
+		return False if user is None else bool(user["admin"])
 
 	def set_user_lock(self, username, locked):
-		with self.connect() as cursor:
-			cursor.execute("UPDATE user SET locked=%s WHERE username=%s", (locked, username))
-			cursor.connection.commit()
-
-	def check_user_exists(self, username):
-		"""Verify that a user exists; helper function for JWT authentication"""
-		with self.connect() as cursor:
-			sql = "SELECT * FROM user WHERE username=%s"
-			cursor.execute(sql, username)
-			return cursor.fetchone() is not None
+		self.dynamo.update_item(
+			Key={
+				"username": username
+			},
+			UpdateExpression="SET locked = :locked",
+			ExpressionAttributeValues={
+				":locked": locked
+			}
+		)
 
 	def create_api(self, username, name, contact, description, term, year, team):
 		"""Create base API entry, returns API ID on success"""
