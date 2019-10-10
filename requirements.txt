@@ -16,7 +16,6 @@ lxml==4.3.4
 MarkupSafe==1.1.1
 py-bcrypt==0.4
 PyJWT==1.7.1
-PyMySQL==0.9.3
 pyrsistent==0.15.3
 python-dateutil==2.8.0
 python-magic==0.4.15
