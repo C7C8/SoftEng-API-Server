@@ -2,6 +2,7 @@ import datetime
 from json import loads
 
 from flask import Flask, Blueprint
+from flask_cors import CORS
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager
 from flask_restplus import Api, Resource, reqparse
 
@@ -9,41 +10,47 @@ from db import APIDatabase
 
 # Load configuration
 conf = {
-	"server-port": 5000,
-	"jwt-key": "DEFAULT PRIVATE KEY",
-	"img-dir": "img",
-	"jar-dir": "jar",
-	"json-output": "apilist.json",
-	"db-host": "localhost",
-	"db-port": 3306,
-	"db-user": "list-api-service",
-	"db-password": "pass",
-	"db-schema": "apilist",
-
-	"s3-bucket": "bucket",
-	"aws_access_key_id": "ACCESS_KEY",
-	"aws_secret_access_key":  "SECRET_KEY"
+	"server": {
+		"server-port": 5000,
+		"jwt-key": "DEFAULT_SECRET_KEY",
+		"img-dir": "img",
+		"jar-dir": "maven",
+		"json-output": "list.json"
+	},
+	"aws": {
+		"region": "us-east-1",
+		"access-key": "",
+		"secret-key": "",
+		"dynamo": {
+			"table": "apisite"
+		},
+		"s3": {
+			"bucket": "apisite.crmyers.dev"
+		}
+	}
 }
 try:
 	with open("conf.json", "r") as file:
 		conf = loads(file.read())
 except FileNotFoundError:
 	print("Couldn't load server conf 'conf.json', using default settings! This is extremely dangerous!")
+server_conf = conf["server"]
+aws_conf = conf["aws"]
 
 # Set up flask
 app = Flask(__name__)
-app.config["JWT_SECRET_KEY"] = conf["jwt-key"]
+app.config["JWT_SECRET_KEY"] = conf["server"]["jwt-key"]
+CORS(app)
 jwt = JWTManager(app)
 apiV1 = Blueprint('api', __name__)
 api = Api(apiV1, version="1.0.0", title="CS 3733 API API", description="Not a typo; serves up info on Java APIs created"
-																		" as part of CS 3733 Software Engineering")
+																	   " as part of CS 3733 Software Engineering")
 app.register_blueprint(apiV1)
 jwt._set_error_handler_callbacks(api)  # plz stop returning 500 Server Error
-ns = api.namespace("api", description="API list functionality")
+ns = api.namespace("", description="API list functionality")
 
-db = APIDatabase(conf["db-host"], conf["db-port"], conf["db-user"], conf["db-password"], conf["db-schema"],
-				 conf["img-dir"], conf["jar-dir"], conf["s3-bucket"], conf["aws_access_key_id"],
-				 conf["aws_secret_access_key"])
+db = APIDatabase(server_conf["img-dir"], server_conf["jar-dir"], aws_conf["dynamo"]["table"], aws_conf["region"],
+				 aws_conf["s3"]["bucket"], aws_conf["access-key"], aws_conf["secret-key"])
 
 
 def response(success, message, descriptor=None, payload=None):
@@ -61,6 +68,7 @@ def admin_required(func):
 		if not db.is_admin(get_jwt_identity()):
 			return response(False, "Admin access not authorized"), 403
 		return func(self)
+
 	return wrapper
 
 
@@ -121,7 +129,7 @@ class List(Resource):
 	@jwt_required
 	def post(self):
 		"""Create or update API data"""
-		if not db.check_user_exists(get_jwt_identity()):
+		if db.get_user(get_jwt_identity()) is None:
 			return response(False, "User does not exist", "username", get_jwt_identity()), 401
 
 		parser = reqparse.RequestParser()
@@ -134,73 +142,53 @@ class List(Resource):
 			required = ("name", "description", "term", "year", "team")
 			if all(key in args["info"] for key in required):
 				info = args["info"]
-				res, apiID = db.create_api(get_jwt_identity(), info["name"], info["contact"], info["description"], info["term"],
+				res, apiID = db.create_api(get_jwt_identity(), info["name"], info["contact"], info["description"],
+										   info["term"],
 										   info["year"], info["team"])
 				if res:
-					db.export_db_to_json(conf["json-output"])
+					db.export_db_to_json(server_conf["json-output"])
 					return response(True, "Created API '{}'".format(info["name"]), "id", apiID), 201
 				else:
 					return response(False, "Failed to create API '{}': {}".format(info["name"], apiID)), 400
 			else:
-				return response(False, "Failed to create API< not enough arguments (name, contact, description, term, year, team)"), 400
+				return response(False,
+								"Failed to create API< not enough arguments (name, contact, description, term, year, team)"), 400
 
 		elif action == "update":
-			parser.add_argument("id", help="API ID", required=False, type=str)
-			parser.add_argument("groupID", help="API group ID", required=False, type=str)
-			parser.add_argument("artifactID", help="API artifact ID", required=False, type=str)
+			parser.add_argument("id", help="API ID", required=True, type=str)
 			args = parser.parse_args()
-			if (args["id"] is None) and ((args["artifactID"] is None) or (args["groupID"] is None)):
-				return response(False, "Not enough info to find API; either provide an ID or use a group/artifact combination"), 400
-
-			apiID = args["id"] if args["id"] is not None else db.get_api_id(args["groupID"], args["artifactID"])
-			if apiID is None:
-				return response(False, "Failed to find API"), 400
 
 			if len(args["info"].keys()) == 0:
 				return response(False, "Didn't include any data to update"), 400
 
-			stat, message = db.update_api(get_jwt_identity(), apiID, **args["info"])
-			db.export_db_to_json(conf["json-output"])
-			return response(stat, message, "id", apiID), 200 if stat else 400
+			stat, message = db.update_api(get_jwt_identity(), args["id"], **args["info"])
+			db.export_db_to_json(server_conf["json-output"])
+			return response(stat, message, "id", args["id"]), 200 if stat else 400
 
 	@jwt_required
 	def delete(self):
 		"""Delete an API listing and all associated metadata. Does NOT delete Jar files from the Maven repository"""
-		if not db.check_user_exists(get_jwt_identity()):
+		if db.get_user(get_jwt_identity()) is None:
 			return {"message": "User does not exist", "username": get_jwt_identity()}, 401
 
 		parser = reqparse.RequestParser()
-		parser.add_argument("id", help="API ID", required=False, type=str)
-		parser.add_argument("groupID", help="API group ID", required=False, type=str)
-		parser.add_argument("artifactID", help="API artifact ID", required=False, type=str)
+		parser.add_argument("id", help="API ID", required=True, type=str)
 		args = parser.parse_args()
 
-		if (args["id"] is None) and ((args["artifactID"] is None) or (args["groupID"] is None)):
-			return response(False, "Not enough info to find API; either provide an ID or use a group/artifact combination"), 400
-
-		apiID = args["id"] if args["id"] is not None else db.get_api_id(args["groupID"], args["artifactID"])
-
-		if apiID is not None and db.delete_api(get_jwt_identity(), apiID):
-			db.export_db_to_json(conf["json-output"])
-			return response(True, "Successfully deleted API", "id", apiID), 200
+		if db.delete_api(get_jwt_identity(), args["id"]):
+			db.export_db_to_json(server_conf["json-output"])
+			return response(True, "Successfully deleted API", "id", args["id"]), 200
 		else:
-			return response(False, "Failed to delete API", "id", apiID), 400
+			return response(False, "Failed to delete API", "id", args["id"]), 400
 
 	def get(self):
 		"""Get information on an API, using its ID or its artifact+groupID"""
 		parser = reqparse.RequestParser()
-		parser.add_argument("id", required=False, type=str)
-		parser.add_argument("artifactID", required=False, type=str)
-		parser.add_argument("groupID", required=False, type=str)
+		parser.add_argument("id", required=True, type=str)
 		args = parser.parse_args()
-		if (args["id"] is None) and ((args["artifactID"] is None) or (args["groupID"] is None)):
-			return response(False, "Not enough info to find API; either provide an ID or use a group/artifact combination"), 400
 
 		# Python won't let me do C-style assignments in if statements, so yeah, there's duped code here. Deal with it.
-		apiID = args["id"] if args["id"] is not None else db.get_api_id(args["groupID"], args["artifactID"])
-		if apiID is None:
-			return response(False, "Failed to find API"), 400
-		res = db.get_api_info(apiID)
+		res = db.get_api_info(args["id"])
 		if res is None:
 			return response(False, "Failed to find API", "id", args["id"]), 400
 		return res
@@ -229,13 +217,14 @@ class Admin(Resource):
 		parser.add_argument("lock", required=False, type=bool)
 		args = parser.parse_args()
 
-		if not db.check_user_exists(args["username"]):
+		if db.get_user(args["username"]) is None:
 			return response(False, "User does not exist"), 400
 
 		# Set / remove admin for users, but don't allow users to de-admin themselves!
 		if args["set_admin"] is not None:
 			if args["username"] == get_jwt_identity():
-				return response(False, "For safety you can't de-admin yourself, use another account or get someone else to do it"), 400
+				return response(False,
+								"For safety you can't de-admin yourself, use another account or get someone else to do it"), 400
 			db.set_admin(args["username"], args["set_admin"])
 
 		# Change password
@@ -259,7 +248,7 @@ class Admin(Resource):
 		parser = reqparse.RequestParser()
 		parser.add_argument("username", required=True, type=str)
 		username = parser.parse_args()["username"]
-		if not db.check_user_exists(username):
+		if db.get_user(username) is None:
 			return response(False, "User does not exist"), 400
 		db.delete_user(username)
 		return response(True, "User deleted"), 200
