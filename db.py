@@ -5,7 +5,6 @@ import os
 import re
 import time
 import uuid
-from distutils.version import StrictVersion
 
 import boto3
 import magic
@@ -156,7 +155,7 @@ class APIDatabase:
 			"year": year,
 			"team": team,
 			"size": 0,
-			"version": "No version uploaded",
+			"version": "0.0.0",
 			"lastupdate": int(time.time()),
 			"display": "Y",
 			"versions": []
