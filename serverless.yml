@@ -3,9 +3,9 @@ provider:
   name: aws
   runtime: python3.7
   alias: python
-  stage: dev
+  stage: prod
   region: us-east-1
-  memorySize: 256
+  memorySize: 384
 package:
   include:
     - conf.json

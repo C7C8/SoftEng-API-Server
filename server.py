@@ -2,6 +2,7 @@ import datetime
 from json import loads
 
 from flask import Flask, Blueprint
+from flask_cors import CORS
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager
 from flask_restplus import Api, Resource, reqparse
 
@@ -39,13 +40,14 @@ aws_conf = conf["aws"]
 # Set up flask
 app = Flask(__name__)
 app.config["JWT_SECRET_KEY"] = conf["server"]["jwt-key"]
+CORS(app)
 jwt = JWTManager(app)
 apiV1 = Blueprint('api', __name__)
 api = Api(apiV1, version="1.0.0", title="CS 3733 API API", description="Not a typo; serves up info on Java APIs created"
 																	   " as part of CS 3733 Software Engineering")
 app.register_blueprint(apiV1)
 jwt._set_error_handler_callbacks(api)  # plz stop returning 500 Server Error
-ns = api.namespace("api", description="API list functionality")
+ns = api.namespace("", description="API list functionality")
 
 db = APIDatabase(server_conf["img-dir"], server_conf["jar-dir"], aws_conf["dynamo"]["table"], aws_conf["region"],
 				 aws_conf["s3"]["bucket"], aws_conf["access-key"], aws_conf["secret-key"])
