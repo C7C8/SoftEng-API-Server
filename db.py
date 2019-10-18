@@ -339,7 +339,14 @@ class APIDatabase:
 	def get_user_list(self):
 		"""Get a list of users and whether they're admin or not, as a list of tuples"""
 		users = self.dynamo.scan()["Items"]
-		return [user["username"] for user in users if user["active"] == 1]
+		return [
+			{
+				"username": user["username"],
+				"admin": bool(user["admin"]),
+				"registered": int(user["registration"] * 1000),
+				"last_login": int(user["last_login"] * 1000),
+				"locked": bool(user["locked"])
+			} for user in users if user["active"] == 1]
 
 	def export_db_to_json(self, filename):
 		"""Export the API db to a certain format JSON file"""
