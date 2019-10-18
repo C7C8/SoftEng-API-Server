@@ -95,6 +95,7 @@ class Register(Resource):
 		args = parser.parse_args()
 		if db.authenticate(args["username"], args["password"]):
 			db.delete_user(args["username"])
+			db.export_db_to_json(server_conf["json-output"])
 			return response(True, "Successfully deleted user {}".format(args["username"])), 200
 		else:
 			return response(False, "Invalid credentials"), 401
