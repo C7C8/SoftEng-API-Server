@@ -44,7 +44,7 @@ class APIDatabase:
 				"locked": 0,
 				"last_login": int(time.time()),
 				"registration": int(time.time()),
-				"active": "Y",
+				"active": 1,
 				"apis": []
 			}
 		)
@@ -52,12 +52,16 @@ class APIDatabase:
 
 	def delete_user(self, username):
 		"""Delete a user from the database"""
-		self.dynamo.update_item(
-			Key={
-				"username": username
-			},
-			UpdateExpression="SET active = 'N'"
-		)
+		user = self.get_user(username)
+		if user is None:
+			return
+		user["username"] = "DELETED_" + user["username"]
+		user["active"] = 0
+		for api in user["apis"]:
+			api["display"] = 0
+
+		self.dynamo.delete_item(Key={"username": username})
+		self.dynamo.put_item(Item=user)
 
 	def change_passwd(self, username, password):
 		"""Change a user's password"""
@@ -98,7 +102,7 @@ class APIDatabase:
 	def authenticate(self, username, password):
 		"""Authenticate username/password combo, returns tuple of booleans (one for auth, one for admin, one for locked"""
 		user = self.get_user(username)
-		if user is None:
+		if user is None or not bool(user["active"]):
 			return False, False, False
 		auth = checkpw(password, user["password"])
 		if auth:
@@ -157,7 +161,7 @@ class APIDatabase:
 			"size": 0,
 			"version": "0.0.0",
 			"lastupdate": int(time.time()),
-			"display": "Y",
+			"display": 1,
 			"versions": []
 		}
 
@@ -239,53 +243,52 @@ class APIDatabase:
 
 			# Jar processing: decode b64-encoded jar files, store them in work. Make sure that an appropriate version string
 			# is provided, otherwise we can't add it to the repo.
-			if "jar" in kwargs.keys() and "version" in kwargs.keys():
-				data = base64.standard_b64decode(kwargs["jar"])
-				file_type = mime.from_buffer(data)
-				if file_type.find("application/zip") == -1 and file_type.find('application/java-archive') == -1:
-					return False, "Received file for API but it wasn't a jar file"
+		if "jar" in kwargs.keys() and "version" in kwargs.keys():
+			data = base64.standard_b64decode(kwargs["jar"])
+			file_type = mime.from_buffer(data)
+			if file_type.find("application/zip") == -1 and file_type.find('application/java-archive') == -1:
+				return False, "Received file for API but it wasn't a jar file"
 
-				# Update version, size, timestamp
-				version_string = re.search("\d+\.\d+\.\d+", kwargs["version"]).group(0)  # Safe because we already validated it
-				self.dynamo.update_item(
-					Key={"username": current_user["username"]},
-					UpdateExpression="SET apis[{}].version = :version".format(current_api_index),
-					ExpressionAttributeValues={":version": version_string}
-				)
-				self.dynamo.update_item(
-					Key={"username": current_user["username"]},
-					UpdateExpression="SET apis[{}].size= :size".format(current_api_index),
-					ExpressionAttributeValues={":size": int(len(data)/1000000)}
-				)
-				self.dynamo.update_item(
-					Key={"username": current_user["username"]},
-					UpdateExpression="SET apis[{}].lastupdate = :time".format(current_api_index),
-					ExpressionAttributeValues={":time": int(time.time())}
-				)
+			# Update version, size, timestamp
+			version_string = re.search("\d+\.\d+\.\d+", kwargs["version"]).group(0)  # Safe because we already validated it
+			self.dynamo.update_item(
+				Key={"username": current_user["username"]},
+				UpdateExpression="SET apis[{}].version = :version".format(current_api_index),
+				ExpressionAttributeValues={":version": version_string}
+			)
+			self.dynamo.update_item(
+				Key={"username": current_user["username"]},
+				UpdateExpression="SET apis[{}].size= :size".format(current_api_index),
+				ExpressionAttributeValues={":size": int(len(data)/1000000)}
+			)
+			self.dynamo.update_item(
+				Key={"username": current_user["username"]},
+				UpdateExpression="SET apis[{}].lastupdate = :time".format(current_api_index),
+				ExpressionAttributeValues={":time": int(time.time())}
+			)
 
-				# Add new entry in version table. TODO Enforce version validity!
-				self.dynamo.update_item(
-					Key={"username": current_user["username"]},
-					UpdateExpression="SET apis[{}].versions= list_append(apis[{}].versions, :version)".format(current_api_index, current_api_index),
-					ExpressionAttributeValues={
-						":version": [{
-							"vnumber": version_string,
-							"info": kwargs["version"].replace(version_string, "").lstrip()
-						}]
-					}
-				)
+			# Add new entry in version table. TODO Enforce version validity!
+			self.dynamo.update_item(
+				Key={"username": current_user["username"]},
+				UpdateExpression="SET apis[{}].versions= list_append(apis[{}].versions, :version)".format(current_api_index, current_api_index),
+				ExpressionAttributeValues={
+					":version": [{
+						"vnumber": version_string,
+						"info": kwargs["version"].replace(version_string, "").lstrip()
+					}]
+				}
+			)
 
-				store_jar_in_maven_repo(base_dir=self.jar_dir,
-										group=current_api["groupID"],
-										artifact=current_api["artifactID"],
-										version=version_string,
-										bucket=self.bucket,
-										file=base64.standard_b64decode(kwargs["jar"]))
+			store_jar_in_maven_repo(base_dir=self.jar_dir,
+									group=current_api["groupID"],
+									artifact=current_api["artifactID"],
+									version=version_string,
+									bucket=self.bucket,
+									file=base64.standard_b64decode(kwargs["jar"]))
 
 			# Jars must be accompanied by versions; if we have one but not the other, throw an error
-			elif ("jar" in kwargs.keys() and "version" not in kwargs.keys())\
-					or ("version" in kwargs.keys() and "jar" not in kwargs.keys()):
-				return False, "Jar files must be accompanied by versions" if "jar" in kwargs.keys() else "Empty versions disallowed"
+		elif ("jar" in kwargs.keys() and "version" not in kwargs.keys()) or ("version" in kwargs.keys() and "jar" not in kwargs.keys()):
+			return False, "Jar files must be accompanied by versions" if "jar" in kwargs.keys() else "Empty versions disallowed"
 		return True, "Updated API"
 
 	def delete_api(self, username, api_id):
@@ -303,7 +306,7 @@ class APIDatabase:
 		self.dynamo.update_item(
 			Key={"username": current_user["username"]},
 			UpdateExpression="SET apis[{}].display = :n".format(current_api_index),
-			ExpressionAttributeValues={":n": "N"}
+			ExpressionAttributeValues={":n": 0}
 		)
 		return True
 
@@ -336,7 +339,7 @@ class APIDatabase:
 	def get_user_list(self):
 		"""Get a list of users and whether they're admin or not, as a list of tuples"""
 		users = self.dynamo.scan()["Items"]
-		return [user["username"] for user in users if user["active"] == "Y"]
+		return [user["username"] for user in users if user["active"] == 1]
 
 	def export_db_to_json(self, filename):
 		"""Export the API db to a certain format JSON file"""
@@ -355,7 +358,7 @@ class APIDatabase:
 			for api in user["apis"]:
 				ret["totalCount"] += 1
 				ret["totalSize"] += float(api["size"])
-				if api["display"] == "Y":
+				if api["display"] == 1:
 					ret["count"] += 1
 					ret["size"] += float(api["size"])
 					apis.append(api)
