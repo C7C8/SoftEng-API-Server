@@ -142,14 +142,11 @@ class APIDatabase:
 		groupID = "edu.wpi.cs3733." + term.lower() + str(year)[2:] + ".team" + team.upper()
 
 		# Enforce uniqueness constraint on artifact ID + group ID
-		apis = set()
 		users = self.dynamo.scan()["Items"]
 		for user in users:
 			for api in user["apis"]:
-				api_str = api["groupID"] + api["artifactID"]
-				if api_str in set:
-					return False, "API group + artifact ID already exists"
-				apis.add(api_str)
+				if api["artifactID"] == artifactID and api["groupID"] == groupID:
+					return False, "API by that group + artifact ID combo has already been created, try choosing another name"
 
 		# Escape anything HTML-y
 		name = html.escape(name)
