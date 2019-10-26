@@ -137,9 +137,19 @@ class APIDatabase:
 		if not self.__validate_args(contact=contact, term=term, year=year, team=team):
 			return False, "Bad arguments"
 
-			# Calculate artifact ID and group ID
+		# Construct artifact ID and group ID
 		artifactID = str().join(c for c in name if c.isalnum())
 		groupID = "edu.wpi.cs3733." + term.lower() + str(year)[2:] + ".team" + team.upper()
+
+		# Enforce uniqueness constraint on artifact ID + group ID
+		apis = set()
+		users = self.dynamo.scan()["Items"]
+		for user in users:
+			for api in user["apis"]:
+				api_str = api["groupID"] + api["artifactID"]
+				if api_str in set:
+					return False, "API group + artifact ID already exists"
+				apis.add(api_str)
 
 		# Escape anything HTML-y
 		name = html.escape(name)
