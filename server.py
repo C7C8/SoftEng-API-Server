@@ -65,7 +65,7 @@ def response(success, message, descriptor=None, payload=None):
 def admin_required(func):
 	def wrapper(self):
 		print("Checking admin privileges on " + get_jwt_identity())
-		if not db.is_admin(get_jwt_identity()):
+		if not bool(db.get_user(get_jwt_identity())["admin"]):
 			return response(False, "Admin access not authorized"), 403
 		return func(self)
 
