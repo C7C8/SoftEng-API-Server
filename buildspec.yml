@@ -6,9 +6,12 @@ phases:
       python: 3.7
   build:
     commands:
-      - ./eb-build.sh
+      - aws s3 cp s3://private-conf/apisite/conf.json .
 artifacts:
   files:
-    - eb-build.zip
+    - ./*.py
+    - conf.json
+    - requirements.txt
+    - .ebextensions/*
   name: eb-build
-  discard-paths: yes
+  discard-paths: no
