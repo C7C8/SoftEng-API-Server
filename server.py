@@ -115,8 +115,8 @@ class Login(Resource):
 			return response(False, "Invalid credentials"), 401
 		if locked:
 			return response(False, "Account locked, please contact site administrator!")
-		expires = datetime.timedelta(hours=1)
-		token = create_access_token(args["username"], expires_delta=expires)
+		# expires = datetime.timedelta(hours=1)
+		token = create_access_token(args["username"], expires_delta=False)
 		return {
 				   "status": "success",
 				   "message": "Logged in as {}".format(args["username"]),
