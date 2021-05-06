@@ -5,7 +5,7 @@ botocore==1.12.247
 Click==7.0
 docutils==0.15.2
 Flask==1.1.1
-Flask-Cors==3.0.8
+Flask-Cors==3.0.9
 Flask-JWT-Extended==3.24.0
 flask-restplus==0.13.0
 importlib-metadata==0.23
